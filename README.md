@@ -8,11 +8,11 @@ It is built for the beta release line and currently ships with Codex as the acti
 
 ### Overview
 
-![Codex Pulse overview](/docs/screenshots/codex-pulse-overview-clean.png)
+![Codex Pulse overview](docs/screenshots/codex-pulse-overview-clean.png)
 
 ### Model usage and heatmap
 
-![Codex Pulse model usage and heatmap](/docs/screenshots/codex-pulse-heatmap.png)
+![Codex Pulse model usage and heatmap](docs/screenshots/codex-pulse-heatmap.png)
 
 ## What it does
 
