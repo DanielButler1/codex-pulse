@@ -4,11 +4,29 @@
 
 The app is configured to build installers for:
 
-- Windows: NSIS `.exe`
-- macOS: `.dmg`
-- Linux: `.AppImage`
+- Windows: NSIS `.exe` for x64
+- macOS: universal `.dmg` covering Intel and Apple Silicon
+- Linux: `.AppImage` for x64
 
 The GitHub Actions workflow at [`.github/workflows/release.yml`](../.github/workflows/release.yml) builds all three on tag pushes and can also be run manually.
+
+## Release assets
+
+The release page should include only user-facing installers plus the update metadata the app needs:
+
+- Windows installer `.exe`
+- macOS `.dmg`
+- Linux `.AppImage`
+- `latest*.yml` update manifests
+- `.blockmap` files for delta updates
+
+The workflow intentionally filters out internal helper files such as:
+
+- `app-update.yml`
+- `builder-debug.yml`
+- `elevate.exe`
+
+Those are build/runtime internals, not user downloads.
 
 Installed builds are tray-first, start hidden by default, and register start-at-login so the watcher/logger can keep running in the background without opening the window.
 

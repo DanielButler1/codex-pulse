@@ -16,11 +16,14 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact_name: windows
+            artifact_name: windows-x64
+            build_args: --win --x64
           - os: macos-latest
-            artifact_name: macos
+            artifact_name: mac-universal
+            build_args: --mac --universal
           - os: ubuntu-latest
-            artifact_name: linux
+            artifact_name: linux-x64
+            build_args: --linux --x64
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -72,7 +75,7 @@ jobs:
         run: npm run build
 
       - name: Package installers
-        run: npm run dist
+        run: npm run dist -- ${{ matrix.build_args }}
 
       - name: Collect release files
         shell: bash
@@ -85,7 +88,6 @@ jobs:
 
           const sourceRoot = path.join(process.cwd(), 'release');
           const outputRoot = path.join(process.cwd(), 'dist-artifacts');
-          const extensions = new Set(['.exe', '.dmg', '.AppImage', '.blockmap', '.yml', '.yaml']);
 
           function walk(dir) {
             for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -94,7 +96,19 @@ jobs:
                 walk(fullPath);
                 continue;
               }
-              if (!extensions.has(path.extname(entry.name))) {
+              const lowerName = entry.name.toLowerCase();
+              const isInstaller =
+                lowerName.endsWith('.exe') ||
+                lowerName.endsWith('.dmg') ||
+                lowerName.endsWith('.appimage');
+              const isUpdateMetadata =
+                lowerName === 'latest.yml' ||
+                lowerName === 'latest-mac.yml' ||
+                lowerName === 'latest-linux.yml';
+              const isBlockmap = lowerName.endsWith('.blockmap');
+              const isHelper = lowerName === 'elevate.exe' || lowerName === 'builder-debug.yml' || lowerName === 'app-update.yml';
+
+              if (isHelper || !(isInstaller || isUpdateMetadata || isBlockmap)) {
                 continue;
               }
               fs.copyFileSync(fullPath, path.join(outputRoot, path.basename(fullPath)));
