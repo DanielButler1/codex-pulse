@@ -1,47 +1,67 @@
 # Codex Pulse
 
-Codex Pulse is a local, privacy-first desktop usage monitor for coding agents.
+Codex Pulse is a local, privacy-first desktop companion for monitoring Codex usage and related provider telemetry without proxying prompts or shipping data off the machine.
+
+It is built for the beta release line and currently ships with Codex as the active provider. The rest of the provider catalog is scaffolded for future expansion and marked `Coming soon`.
+
+## Screenshots
+
+### Overview
+
+![Codex Pulse overview](docs/screenshots/codex-pulse-overview-clean.png)
+
+### Model usage and heatmap
+
+![Codex Pulse model usage and heatmap](docs/screenshots/codex-pulse-heatmap.png)
 
 ## What it does
 
-- Monitors Codex usage locally without proxying prompts.
-- Tracks additional providers through a shared adapter model.
-- Stores snapshots in local SQLite only.
-- Renders provider-specific balance, usage, and trend views.
+- Monitors Codex usage locally without replacing the normal Codex app.
+- Reads local auth and usage state when available.
+- Stores usage snapshots in local SQLite only.
+- Shows predicted limit hit timing based on recent activity.
+- Visualizes model usage trends, projections, and an all-time heatmap.
+- Runs tray-first and starts hidden on installed builds.
+- Supports a provider catalog so additional agents can be added without reworking the UI.
 
 ## Current status
 
-- `Codex` is implemented end-to-end.
-- `OpenRouter` is implemented with balance and activity views.
-- Other providers are scaffolded or marked `Coming soon`.
-- The app is tray-first, starts hidden on installed builds, and is configured to start at login by default.
+- `Codex` is the only active provider.
+- Other providers are listed but marked `Coming soon`.
+- The app is configured for tray-first startup on installed builds.
+- Update checks, packaging, and release workflows are already wired in.
 
-## Repo readiness
+## Why this exists
 
-This repository is set up to be pushed to GitHub as-is:
+The goal is a small local utility that answers:
 
-- Cross-platform desktop build config is present.
-- CI runs on Windows and macOS via GitHub Actions.
-- Temp scraping artifacts and build outputs are ignored.
-- Local secrets stay in app data / keychain, not in the repo.
+- How much usage is left?
+- How quickly is it burning?
+- When is it likely to run out?
+- What does usage look like over time?
+
+The app deliberately stays read-only.
 
 ## Tech stack
 
-- Electron + `electron-vite`
-- React + TypeScript
+- Electron
+- Electron Vite
+- React
+- TypeScript
 - Tailwind CSS
 - Recharts
-- `better-sqlite3`
-- `electron-builder`
+- better-sqlite3
+- electron-builder
 
 ## Security model
 
-- Reads local auth/files only when required by enabled providers.
-- Never prints access tokens in UI or logs.
-- Stores snapshots only in local SQLite (`app.getPath("userData")/codex-pulse.db`).
-- No prompt proxying, no remote telemetry upload.
+- No prompt proxying.
+- No upload of usage data.
+- No token display in the UI.
+- Secrets stay in local app storage or the OS credential store.
+- Snapshots stay on disk in the local SQLite database.
 
-## Quick start
+## Getting started
 
 ```bash
 npm install
@@ -57,32 +77,19 @@ npm run build
 
 ## Packaging
 
-`electron-builder` is configured for:
-
-- Windows (`nsis`)
-- macOS (`dmg`)
-- Linux (`AppImage`)
-
-To create distributables:
+Build installers and app bundles with:
 
 ```bash
 npm run dist
 ```
 
-Automated release packaging is documented in [docs/RELEASE.md](docs/RELEASE.md).
+Supported release targets:
 
-## Current implementation notes
+- Windows `nsis`
+- macOS `dmg`
+- Linux `AppImage`
 
-- Usage polling uses fallback paths with read-only behavior.
-- Snapshots are retained for 30 days with daily pruning.
-- Model usage parsing runs async to reduce renderer stalls.
-- Provider sidebar and provider catalog are scaffolded for incremental rollout.
-
-## References
-
-- [CodexBar README](https://github.com/steipete/CodexBar)
-- [CodexBar Codex provider docs](https://github.com/steipete/CodexBar/blob/main/docs/codex.md)
-- [CodexBar provider authoring guide](https://github.com/steipete/CodexBar/blob/main/docs/provider.md)
+Release and signing guidance lives in [docs/RELEASE.md](docs/RELEASE.md).
 
 ## Repository docs
 
@@ -90,3 +97,17 @@ Automated release packaging is documented in [docs/RELEASE.md](docs/RELEASE.md).
 - [Release and signing](docs/RELEASE.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Screenshots](docs/screenshots/README.md)
+
+## Development notes
+
+- Provider-specific settings are handled in the main process and surfaced through the renderer.
+- Model usage parsing runs asynchronously to keep the UI responsive.
+- The sidebar is tray-first and intentionally compact for background use.
+
+## Reference material
+
+- [CodexBar](https://github.com/steipete/CodexBar)
+- [CodexBar Codex provider docs](https://github.com/steipete/CodexBar/blob/main/docs/codex.md)
+- [CodexBar provider authoring guide](https://github.com/steipete/CodexBar/blob/main/docs/provider.md)

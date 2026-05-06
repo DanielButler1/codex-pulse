@@ -1,6 +1,13 @@
 # Contributing
 
-## Setup
+## Before you start
+
+- Keep provider logic isolated.
+- Treat auth files and tokens as secrets.
+- Prefer additive changes over broad refactors.
+- If a renderer change affects layout, include a screenshot in the PR.
+
+## Local setup
 
 ```bash
 npm install
@@ -9,21 +16,34 @@ npm run dev
 
 ## Validation
 
+Run the project checks before opening a PR:
+
 ```bash
 npm run typecheck
 npm run build
 ```
 
-## Principles
+If you touch provider parsing or persistence, also verify the relevant collector path in the running app.
 
-- Keep provider logic isolated.
-- Never log or display tokens/secrets.
-- Prefer additive changes over broad rewrites.
-- For parser changes, add fixtures/tests where practical.
+## PR checklist
 
-## Pull requests
+- Describe the user-facing change.
+- Call out any new provider fallback order or auth requirement.
+- Mention whether the change affects packaging, startup, or tray behavior.
+- Include screenshots for visual changes.
+- Note any new secrets, files, or OS integration points explicitly.
 
-- Describe user-facing impact.
-- Include screenshots/GIFs for renderer changes.
-- Note any new provider source paths and fallback ordering.
-- Call out security implications explicitly.
+## Security expectations
+
+- Do not log access tokens, refresh tokens, cookies, or API keys.
+- Do not add remote telemetry or upload snapshots off-device.
+- Keep collectors read-only.
+
+## Roadmap changes
+
+If you are working on a new provider or collector source:
+
+- Add or update the provider catalog entry.
+- Add or update the collector documentation.
+- Make the fallback path explicit.
+- Keep the UI state honest when config is missing.

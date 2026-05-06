@@ -1,40 +1,41 @@
 # Roadmap
 
-## Phase 1 (current)
+## Current phase
 
-- Stabilize Codex provider UX and prediction quality.
-- Keep app responsive during heavy model-usage parsing.
-- Harden packaging/docs/CI for public GitHub repo.
+- Stabilize the Codex experience.
+- Keep the renderer responsive during local parsing and refreshes.
+- Make the repo easy to publish, package, and maintain on GitHub.
 
-## Phase 2
+## Short term
 
-- Introduce provider adapter interface in main process.
-- Move Codex into adapter implementation.
-- Add provider health/status surface in sidebar.
+- Tighten Codex usage projections and confidence messaging.
+- Improve provider-specific empty states and config banners.
+- Keep the tray-first startup behavior predictable on installed builds.
+- Polish screenshots, docs, and release notes.
 
-## Phase 3
+## Next providers
 
-- Add Claude provider (CLI + local logs; optional web source).
-- Add Cursor provider (local/web account usage).
-- Add Gemini provider (CLI/OAuth usage paths).
+- Re-enable `Claude` with the correct provider-specific collector flow.
+- Re-enable `OpenRouter` with its own balance/activity UI.
+- Add back any provider only when its local data path is understood.
 
-## Phase 4
+## Platform work
 
-- Add Copilot/OpenRouter adapters.
-- Add merged “All providers” overview.
-- Add per-provider cost and forecast cards.
+- Finish Windows release polish.
+- Keep macOS and Linux packaging in sync.
+- Add update checks and release notes to the shipped app.
 
-## Phase 5
+## Longer term
 
-- Advanced analytics:
-  - model-family trends
-  - anomaly detection
-  - budget alarms
-  - export/backup
+- Provider adapter interface in the main process.
+- Merged multi-provider overview.
+- Additional analytics and exports.
+- Budget alerts and anomaly detection.
 
 ## Guardrails
 
+- Read-only collectors only.
+- No prompt proxying.
 - No token leakage.
-- Read-only collectors.
-- Explicit fallback order per provider.
-- Feature flags for high-risk collectors (web/cookie sources).
+- No remote upload of usage data.
+- Explicit fallback ordering for every provider path.
