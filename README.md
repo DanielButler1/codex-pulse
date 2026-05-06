@@ -8,11 +8,11 @@ It is built for the beta release line and currently ships with Codex as the acti
 
 ### Overview
 
-![Codex Pulse overview](docs/screenshots/codex-pulse-overview-clean.png)
+![Codex Pulse overview](/docs/screenshots/codex-pulse-overview-clean.png)
 
 ### Model usage and heatmap
 
-![Codex Pulse model usage and heatmap](docs/screenshots/codex-pulse-heatmap.png)
+![Codex Pulse model usage and heatmap](/docs/screenshots/codex-pulse-heatmap.png)
 
 ## What it does
 
@@ -98,16 +98,9 @@ Release and signing guidance lives in [docs/RELEASE.md](docs/RELEASE.md).
 - [Roadmap](docs/ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
-- [Screenshots](docs/screenshots/README.md)
 
 ## Development notes
 
 - Provider-specific settings are handled in the main process and surfaced through the renderer.
 - Model usage parsing runs asynchronously to keep the UI responsive.
 - The sidebar is tray-first and intentionally compact for background use.
-
-## Reference material
-
-- [CodexBar](https://github.com/steipete/CodexBar)
-- [CodexBar Codex provider docs](https://github.com/steipete/CodexBar/blob/main/docs/codex.md)
-- [CodexBar provider authoring guide](https://github.com/steipete/CodexBar/blob/main/docs/provider.md)
