@@ -1,0 +1,41 @@
+// @see - https://www.electron.build/configuration/configuration
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.codexpulse.desktop",
+  "asar": true,
+  "asarUnpack": ["node_modules/better-sqlite3/**/*"],
+  "productName": "Codex Pulse",
+  "directories": {
+    "output": "release/${version}"
+  },
+  "files": ["out/**/*", "package.json"],
+  "extraResources": ["build/icon.png"],
+  "extraMetadata": {
+    "main": "out/main/index.js"
+  },
+  "mac": {
+    "target": ["dmg"],
+    "artifactName": "${productName}-Mac-${version}-Installer.${ext}",
+    "icon": "build/icon.png"
+  },
+  "win": {
+    "target": [{ "target": "nsis", "arch": ["x64"] }],
+    "artifactName": "${productName}-Windows-${version}-Setup.${ext}",
+    "icon": "build/icon.ico"
+  },
+  "linux": {
+    "target": ["AppImage"],
+    "artifactName": "${productName}-Linux-${version}.${ext}",
+    "icon": "build/icon.png"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false,
+    "runAfterFinish": true,
+    "installerIcon": "build/icon.ico",
+    "installerHeaderIcon": "build/icon.ico",
+    "uninstallerIcon": "build/icon.ico"
+  }
+}

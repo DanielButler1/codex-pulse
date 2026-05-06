@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: windows
+          - os: macos-latest
+            artifact_name: macos
+          - os: ubuntu-latest
+            artifact_name: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Set repository metadata
+        run: npm pkg set repository="https://github.com/${{ github.repository }}.git"
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build renderer and main bundles
+        run: npm run build
+
+      - name: Package installers
+        run: npm run dist -- --publish always
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Collect release files
+        shell: bash
+        run: |
+          rm -rf dist-artifacts
+          mkdir -p dist-artifacts
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+
+          const sourceRoot = path.join(process.cwd(), 'release');
+          const outputRoot = path.join(process.cwd(), 'dist-artifacts');
+          const extensions = new Set(['.exe', '.dmg', '.AppImage', '.blockmap', '.yml', '.yaml']);
+
+          function walk(dir) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const fullPath = path.join(dir, entry.name);
+              if (entry.isDirectory()) {
+                walk(fullPath);
+                continue;
+              }
+              if (!extensions.has(path.extname(entry.name))) {
+                continue;
+              }
+              fs.copyFileSync(fullPath, path.join(outputRoot, path.basename(fullPath)));
+            }
+          }
+
+          if (fs.existsSync(sourceRoot)) {
+            walk(sourceRoot);
+          }
+          NODE
+
+      - name: Upload packaged installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}-installer
+          path: dist-artifacts/*
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
