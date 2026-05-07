@@ -33,6 +33,7 @@ const RANGE_OPTIONS: Array<{ value: ModelUsageRange; label: string }> = [
   { value: "24h", label: "24h" },
   { value: "7d", label: "7d" },
   { value: "30d", label: "30d" },
+  { value: "period", label: "This period" },
   { value: "all", label: "All time" },
 ];
 
@@ -151,7 +152,9 @@ export function ModelUsageTable({
         <div>
           <h2 className="text-base font-medium text-neutral-200">Model usage</h2>
           <p className="text-sm text-neutral-400">
-            Requests and token usage by model from local rollout logs
+            {range === "period"
+              ? "Requests and token usage by model in the current rate limit period"
+              : "Requests and token usage by model from local rollout logs"}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

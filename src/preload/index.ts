@@ -20,8 +20,8 @@ const api = {
   getUsageHistory(range: HistoryRange): Promise<UsageSnapshot[]> {
     return ipcRenderer.invoke("codexPulse:getUsageHistory", range);
   },
-  getModelUsage(range: ModelUsageRange): Promise<ModelUsageSummary> {
-    return ipcRenderer.invoke("codexPulse:getModelUsage", range);
+  getModelUsage(range: ModelUsageRange, periodStart?: number | null): Promise<ModelUsageSummary> {
+    return ipcRenderer.invoke("codexPulse:getModelUsage", range, periodStart ?? null);
   },
   getModelUsageHeatmap(): Promise<ModelUsageHeatmapData> {
     return ipcRenderer.invoke("codexPulse:getModelUsageHeatmap");

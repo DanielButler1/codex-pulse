@@ -93,9 +93,17 @@ const MODEL_PRICING: Array<{ prefix: string; pricing: ModelPricing }> = [
   },
 ];
 
-export async function getModelUsageSummary(range: ModelUsageRange): Promise<ModelUsageSummary> {
+export async function getModelUsageSummary(
+  range: ModelUsageRange,
+  periodStart?: number,
+): Promise<ModelUsageSummary> {
   const generatedAt = Date.now();
-  const since = range === "all" ? 0 : generatedAt - RANGE_TO_MS[range];
+  const since =
+    range === "all"
+      ? 0
+      : range === "period"
+        ? Math.max(0, periodStart ?? generatedAt - RANGE_TO_MS["7d"])
+        : generatedAt - RANGE_TO_MS[range];
   const timelineGranularity = resolveTimelineGranularity(range);
   const sessionsDir = path.join(resolveCodexHome(), "sessions");
   const rangeFiles = findRolloutFiles(sessionsDir, range === "all" ? 0 : since - DAY_MS);
@@ -447,6 +455,8 @@ function resolveTimelineGranularity(range: ModelUsageRange): TimelineGranularity
       return "6h";
     case "30d":
       return "1d";
+    case "period":
+      return "6h";
     case "all":
     default:
       return "1mo";

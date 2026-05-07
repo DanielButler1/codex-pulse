@@ -23,7 +23,7 @@ export type UsageSnapshot = {
 };
 
 export type HistoryRange = "1h" | "6h" | "24h" | "7d" | "30d";
-export type ModelUsageRange = HistoryRange | "all";
+export type ModelUsageRange = HistoryRange | "period" | "all";
 
 export type ProviderCollectorMode = "auto" | "api" | "cli" | "web" | "logs";
 

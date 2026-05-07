@@ -39,7 +39,7 @@ declare global {
     codexPulse: {
       getLatestUsage(): Promise<UsageSnapshot | null>;
       getUsageHistory(range: HistoryRange): Promise<UsageSnapshot[]>;
-      getModelUsage(range: ModelUsageRange): Promise<ModelUsageSummary>;
+      getModelUsage(range: ModelUsageRange, periodStart?: number | null): Promise<ModelUsageSummary>;
       getModelUsageHeatmap(): Promise<ModelUsageHeatmapData>;
       getProviderUsage(providerId: string): Promise<ProviderUsageResult>;
       getProviderConfig(providerId: string): Promise<ProviderConfigurationView>;

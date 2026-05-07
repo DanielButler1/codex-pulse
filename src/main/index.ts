@@ -192,8 +192,8 @@ function registerIpc() {
     }
     return db.getHistory(range);
   });
-  ipcMain.handle("codexPulse:getModelUsage", async (_event, range: ModelUsageRange) =>
-    await getModelUsageSummary(range),
+  ipcMain.handle("codexPulse:getModelUsage", async (_event, range: ModelUsageRange, periodStart?: number | null) =>
+    await getModelUsageSummary(range, periodStart ?? undefined),
   );
   ipcMain.handle("codexPulse:getModelUsageHeatmap", async () =>
     await getAllTimeModelUsageHeatmap(),

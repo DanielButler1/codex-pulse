@@ -16,8 +16,8 @@ export const codexPulseApi = {
   getLatestUsage: (): Promise<UsageSnapshot | null> => window.codexPulse.getLatestUsage(),
   getUsageHistory: (range: HistoryRange): Promise<UsageSnapshot[]> =>
     window.codexPulse.getUsageHistory(range),
-  getModelUsage: (range: ModelUsageRange): Promise<ModelUsageSummary> =>
-    window.codexPulse.getModelUsage(range),
+  getModelUsage: (range: ModelUsageRange, periodStart?: number | null): Promise<ModelUsageSummary> =>
+    window.codexPulse.getModelUsage(range, periodStart),
   getModelUsageHeatmap: (): Promise<ModelUsageHeatmapData> =>
     window.codexPulse.getModelUsageHeatmap(),
   getProviderUsage: (providerId: string): Promise<ProviderUsageResult> =>

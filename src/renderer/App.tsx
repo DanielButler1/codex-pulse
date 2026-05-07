@@ -192,6 +192,11 @@ export default function App() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const lastModelUsageLoadAtRef = useRef(0);
   const lastProviderUsageLoadAtRef = useRef<Partial<Record<ProviderId, number>>>({});
+  const modelUsageReferenceRef = useRef<UsageSnapshot | null>(null);
+
+  useEffect(() => {
+    modelUsageReferenceRef.current = latest ?? history[history.length - 1] ?? null;
+  }, [history, latest]);
 
   const load = useCallback(async () => {
     const [latestUsage, usageHistory, currentStatus] = await Promise.all([
@@ -208,6 +213,7 @@ export default function App() {
         pollIntervalSeconds: currentStatus.pollIntervalSeconds,
       }));
     }
+    return latestUsage;
   }, []);
 
   const loadSettings = useCallback(async () => {
@@ -220,10 +226,11 @@ export default function App() {
     setUpdateState(state);
   }, []);
 
-  const loadModelUsage = useCallback(async (range: ModelUsageRange) => {
+  const loadModelUsage = useCallback(async (range: ModelUsageRange, referenceUsage: UsageSnapshot | null = modelUsageReferenceRef.current) => {
     setModelUsageLoading(true);
     try {
-      const summary = await codexPulseApi.getModelUsage(range);
+      const periodStart = range === "period" ? resolveRateLimitPeriodStart(referenceUsage) : null;
+      const summary = await codexPulseApi.getModelUsage(range, periodStart);
       setModelUsage(summary);
       lastModelUsageLoadAtRef.current = Date.now();
     } finally {
@@ -294,8 +301,33 @@ export default function App() {
       setModelUsage(null);
       return;
     }
+    if (modelRange === "period") {
+      const referenceUsage = modelUsageReferenceRef.current;
+      if (!referenceUsage) {
+        return;
+      }
+      void loadModelUsage("period", referenceUsage);
+      return;
+    }
     void loadModelUsage(modelRange);
   }, [loadModelUsage, modelRange, selectedProviderId]);
+
+  useEffect(() => {
+    if (selectedProviderId !== "codex" || modelRange !== "period") {
+      return;
+    }
+    const referenceUsage = modelUsageReferenceRef.current;
+    if (!referenceUsage) {
+      return;
+    }
+    if (
+      modelUsage != null &&
+      Date.now() - lastModelUsageLoadAtRef.current < MODEL_USAGE_BACKGROUND_REFRESH_MS
+    ) {
+      return;
+    }
+    void loadModelUsage("period", referenceUsage);
+  }, [loadModelUsage, modelRange, modelUsage, selectedProviderId]);
 
   useEffect(() => {
     void loadModelHeatmap();
@@ -412,10 +444,14 @@ export default function App() {
 
   const onRefreshNow = useCallback(async () => {
     await codexPulseApi.refreshNow();
+    const latestUsage = await load();
     await Promise.all([
-      load(),
       loadModelHeatmap(),
-      selectedProviderId === "codex" ? loadModelUsage(modelRange) : Promise.resolve(),
+      selectedProviderId === "codex"
+        ? modelRange === "period"
+          ? loadModelUsage("period", latestUsage ?? modelUsageReferenceRef.current)
+          : loadModelUsage(modelRange)
+        : Promise.resolve(),
       PROVIDER_CATALOG.find((provider) => provider.id === selectedProviderId)?.availability === "active"
         ? loadProviderUsage(selectedProviderId, true)
         : Promise.resolve(),
@@ -1409,6 +1445,20 @@ function formatOpenRouterReset(value: string): string {
   return value
     .replace(/_/g, " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function resolveRateLimitPeriodStart(latest: UsageSnapshot | null): number | null {
+  if (!latest) {
+    return null;
+  }
+  const windowMinutes = latest.secondaryWindowMinutes ?? latest.primaryWindowMinutes ?? null;
+  const resetAfterSeconds = latest.secondaryResetAfterSeconds ?? latest.primaryResetAfterSeconds ?? null;
+  if (windowMinutes == null || resetAfterSeconds == null) {
+    return null;
+  }
+  const windowMs = windowMinutes * 60 * 1000;
+  const remainingMs = Math.max(0, resetAfterSeconds * 1000);
+  return Math.max(0, latest.checkedAt - (windowMs - remainingMs));
 }
 
 function formatMaybeUsd(value: number | null): string {
