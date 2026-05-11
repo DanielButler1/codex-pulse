@@ -1925,43 +1925,69 @@ function calculateBlendedProjectionRate(params: {
 
   const elapsedHours = Math.max((latestCheckedAt - periodStart) / (1000 * 60 * 60), 1 / 60);
   const periodRate = clampMin((usedNow - periodStartUsed) / elapsedHours, 0);
-  const eightHourRate = calculateWindowObservedRate(observed, latestCheckedAt, 8 * 60 * 60 * 1000);
+  const sixHourRate = calculateWindowObservedRate(observed, latestCheckedAt, 6 * 60 * 60 * 1000);
+  const twelveHourRate = calculateWindowObservedRate(observed, latestCheckedAt, 12 * 60 * 60 * 1000);
+  const twentyFourHourRate = calculateWindowObservedRate(observed, latestCheckedAt, 24 * 60 * 60 * 1000);
   const recentRate = calculateRecentObservedRate(observed);
   const sampleCount = observed.filter((snapshot) => snapshot.secondaryUsedPercent != null).length;
-
-  // Early in the weekly window, period-average pace is the most stable signal.
-  // Recent segments can be too noisy and understate pace right after reset.
-  if (sampleCount < 4 || elapsedHours <= 24) {
-    const earlyBlend = weightedAverageRate([
-      { rate: periodRate, weight: 0.75 },
-      { rate: eightHourRate, weight: 0.15 },
-      { rate: recentRate, weight: 0.1 },
-    ]);
-    if (earlyBlend != null) {
-      const anchored = Math.max(earlyBlend, periodRate * 0.7);
-      return clampMin(anchored, 0);
-    }
-  }
-
-  const blended = weightedAverageRate([
-    { rate: eightHourRate, weight: 0.55 },
-    { rate: periodRate, weight: 0.25 },
-    { rate: recentRate, weight: 0.1 },
+  const baselineRate = weightedAverageRate([
+    { rate: twentyFourHourRate, weight: 0.45 },
+    { rate: twelveHourRate, weight: 0.25 },
+    { rate: periodRate, weight: 0.2 },
     { rate: backendRate, weight: 0.1 },
   ]);
-  if (blended == null) {
-    return null;
+  const shortWindowRate = weightedAverageRate([
+    { rate: sixHourRate, weight: 0.5 },
+    { rate: twelveHourRate, weight: 0.3 },
+    { rate: twentyFourHourRate, weight: 0.15 },
+    { rate: recentRate, weight: 0.05 },
+  ]);
+  const shortWindowPace = Math.max(
+    shortWindowRate ?? 0,
+    sixHourRate ?? 0,
+    twelveHourRate ?? 0,
+    twentyFourHourRate ?? 0,
+    recentRate ?? 0,
+  );
+  const effectiveAnchor = baselineRate ?? periodRate ?? backendRate ?? null;
+
+  if (shortWindowRate == null) {
+    return effectiveAnchor != null ? clampMin(effectiveAnchor, 0) : null;
   }
 
-  const baseForCap = Math.max(periodRate, eightHourRate ?? 0);
-  const capBase = baseForCap > 0 ? Math.max(baseForCap * 1.5, baseForCap + 0.45, 1.0) : 2.0;
-  const capped = Math.min(blended, capBase);
+  const windowSignalCount = [sixHourRate, twelveHourRate, twentyFourHourRate, recentRate].filter(
+    (rate) => rate != null && Number.isFinite(rate),
+  ).length;
+  const recentEvidence = Math.min(windowSignalCount / 4, 1) * Math.min(sampleCount / 6, 1);
+  const elapsedEvidence = Math.min(elapsedHours / 24, 1);
+  const divergence =
+    effectiveAnchor != null && effectiveAnchor > 0
+      ? Math.min(Math.abs(shortWindowRate - effectiveAnchor) / effectiveAnchor, 1.5) / 1.5
+      : shortWindowRate > 0
+        ? 1
+        : 0;
 
-  // In the first ~1.5 days, keep projection anchored to window progress so
-  // we don't report unrealistically low pace after intermittent activity.
-  if (elapsedHours <= 36 && usedNow >= 8) {
-    return clampMin(Math.max(capped, periodRate * 0.65), 0);
-  }
+  const trendingUp = effectiveAnchor == null || shortWindowRate >= effectiveAnchor;
+  const recentWeightBase = trendingUp
+    ? 0.62 + recentEvidence * 0.14 + elapsedEvidence * 0.08 + divergence * 0.08
+    : 0.48 + recentEvidence * 0.1 + elapsedEvidence * 0.06 + divergence * 0.06;
+  const recentWeight = Math.max(trendingUp ? 0.65 : 0.5, Math.min(trendingUp ? 0.9 : 0.72, recentWeightBase));
+
+  const anchoredRate =
+    effectiveAnchor == null
+      ? shortWindowRate
+      : effectiveAnchor * (1 - recentWeight) + shortWindowRate * recentWeight;
+
+  const floorRate =
+    effectiveAnchor != null
+      ? trendingUp
+        ? Math.max(shortWindowPace * 0.9, effectiveAnchor * 0.2)
+        : Math.max(shortWindowRate * 0.95, effectiveAnchor * 0.2)
+      : shortWindowRate;
+
+  const baseForCap = Math.max(effectiveAnchor ?? 0, shortWindowPace, twelveHourRate ?? 0, twentyFourHourRate ?? 0);
+  const capBase = baseForCap > 0 ? Math.max(baseForCap * 1.3, baseForCap + 0.45, 1.0) : 2.0;
+  const capped = Math.min(Math.max(anchoredRate, floorRate), capBase);
 
   return clampMin(capped, 0);
 }
@@ -1980,13 +2006,38 @@ function calculateWindowObservedRate(
   let startIndex = usable.findIndex((snapshot) => snapshot.checkedAt >= startMs);
   if (startIndex === -1) {
     startIndex = usable.length - 1;
-  } else if (startIndex > 0) {
-    startIndex -= 1;
   }
-  const windowPoints = usable.slice(startIndex);
+
+  const previousPoint = startIndex > 0 ? usable[startIndex - 1] : null;
+  const firstInWindow = usable[startIndex] ?? usable[usable.length - 1];
+  const seedUsed =
+    previousPoint?.secondaryUsedPercent ??
+    firstInWindow?.secondaryUsedPercent ??
+    usable[0]?.secondaryUsedPercent ??
+    null;
+
+  const windowPoints: UsageSnapshot[] =
+    seedUsed != null
+      ? [
+          {
+            ...((previousPoint ?? firstInWindow) as UsageSnapshot),
+            checkedAt: startMs,
+            secondaryUsedPercent: seedUsed,
+          },
+          ...usable.slice(startIndex),
+        ]
+      : usable.slice(startIndex);
   if (windowPoints.length < 2) {
     return null;
   }
+
+  const first = windowPoints[0];
+  const last = windowPoints[windowPoints.length - 1];
+  const windowHours = (last.checkedAt - first.checkedAt) / (1000 * 60 * 60);
+  const netRate =
+    windowHours > 0
+      ? clampMin(((last.secondaryUsedPercent ?? 0) - (first.secondaryUsedPercent ?? 0)) / windowHours, 0)
+      : null;
 
   const segmentRates: number[] = [];
   for (let i = 1; i < windowPoints.length; i += 1) {
@@ -2000,13 +2051,20 @@ function calculateWindowObservedRate(
     segmentRates.push(clampMin(deltaUsed / deltaHours, 0));
   }
   if (segmentRates.length === 0) {
-    return null;
+    return netRate;
   }
   segmentRates.sort((a, b) => a - b);
   const mid = Math.floor(segmentRates.length / 2);
-  return segmentRates.length % 2 === 0
-    ? (segmentRates[mid - 1] + segmentRates[mid]) / 2
-    : segmentRates[mid];
+  const medianRate =
+    segmentRates.length % 2 === 0
+      ? (segmentRates[mid - 1] + segmentRates[mid]) / 2
+      : segmentRates[mid];
+
+  if (netRate == null) {
+    return medianRate;
+  }
+
+  return Math.max(netRate, medianRate);
 }
 
 function calculateRecentObservedRate(observed: UsageSnapshot[]): number | null {
