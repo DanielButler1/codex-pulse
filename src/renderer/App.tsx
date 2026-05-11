@@ -18,6 +18,7 @@ import { StatusBar } from "./components/StatusBar";
 import {
   formatBurnRate,
   formatDate,
+  formatDateTime,
   formatTime,
 } from "./lib/format";
 import { codexPulseApi } from "./lib/ipc";
@@ -1739,6 +1740,9 @@ function UsageSparkline({ data }: { data: UsageSnapshot[] }) {
             }}
             formatter={(value: unknown) =>
               typeof value === "number" ? `${value.toFixed(1)}% used` : String(value ?? "")
+            }
+            labelFormatter={(value: unknown) =>
+              formatDateTime(typeof value === "number" ? value : Number(value))
             }
           />
           <Legend wrapperStyle={{ color: "#d4d4d4", fontSize: "12px" }} />
