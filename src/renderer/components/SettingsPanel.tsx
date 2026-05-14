@@ -1,56 +1,125 @@
-import { useEffect, useMemo, useState } from "react";
-import type {
-  ProviderCatalogEntry,
-  ProviderId,
-  ProviderSecretField,
-} from "../../../shared/provider-catalog";
-import type {
-  AppSettings,
-  ProviderConfigurationView,
-  ProviderConnectionSettings,
-  ProviderSecretInput,
-} from "../lib/types";
+import type { ReactNode } from "react";
+import { CalendarDays, CreditCard, Monitor, MoonStar, SunMedium } from "lucide-react";
+import { SUBSCRIPTION_PLAN_META } from "../../../shared/subscription-plans";
+import type { AppSettings } from "../lib/types";
 
 type SettingsPanelProps = {
   settings: AppSettings;
-  selectedProviderId: ProviderId;
-  providers: ProviderCatalogEntry[];
-  providerConfig: ProviderConfigurationView;
-  providerConfigLoading: boolean;
-  providerConfigSaving: boolean;
-  onSelectProvider: (providerId: ProviderId) => void;
   onChange: (partial: Partial<AppSettings>) => void;
-  onUpdateProviderSettings: (partial: Partial<ProviderConnectionSettings>) => Promise<void>;
-  onUpdateProviderSecrets: (partial: ProviderSecretInput) => Promise<void>;
 };
 
-export function SettingsPanel({
-  settings,
-  selectedProviderId,
-  providers,
-  providerConfig,
-  providerConfigLoading,
-  providerConfigSaving,
-  onSelectProvider,
-  onChange,
-  onUpdateProviderSettings,
-  onUpdateProviderSecrets,
-}: SettingsPanelProps) {
-  const selectedProvider =
-    providers.find((provider) => provider.id === selectedProviderId) ?? providers[0] ?? null;
+export function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
+  const selectedPlan = SUBSCRIPTION_PLAN_META[settings.subscriptionPlan];
 
   return (
-    <section className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
-      <h2 className="text-sm font-medium tracking-wide text-neutral-300">Settings</h2>
+    <section className="space-y-5">
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-6">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-2xl font-semibold text-neutral-100">Settings</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-400">
+              Configure the local Codex watcher and the subscription details used for the
+              <span className="font-medium text-neutral-200"> This sub period </span>
+              usage view.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <SummaryPill
+              icon={<CreditCard className="h-4 w-4" />}
+              label="Current plan"
+              value={selectedPlan.label}
+            />
+            <SummaryPill
+              icon={<CalendarDays className="h-4 w-4" />}
+              label="Renewal"
+              value={settings.subscriptionLastRenewalDate || "Not set"}
+            />
+          </div>
+        </div>
+      </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-          <h3 className="text-sm font-medium text-neutral-200">General</h3>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <label className="flex flex-col gap-1 text-sm text-neutral-300">
-              Theme
+      <div className="grid gap-5 xl:grid-cols-[1.2fr_0.95fr]">
+        <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-6">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-2 text-emerald-300">
+              <CreditCard className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-neutral-100">Subscription window</h3>
+              <p className="mt-1 text-sm text-neutral-400">
+                Drives the monthly usage-value comparison and current billing period filter.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <label className="flex flex-col gap-2 text-sm text-neutral-300">
+              <span className="font-medium text-neutral-200">Subscription plan</span>
               <select
-                className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100 outline-none ring-neutral-400 focus:ring-2"
+                className="rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3 text-neutral-100 outline-none ring-neutral-400 transition focus:ring-2"
+                value={settings.subscriptionPlan}
+                onChange={(event) =>
+                  onChange({
+                    subscriptionPlan: event.target.value as AppSettings["subscriptionPlan"],
+                  })
+                }
+              >
+                {Object.entries(SUBSCRIPTION_PLAN_META).map(([plan, meta]) => (
+                  <option key={plan} value={plan}>
+                    {meta.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-2 text-sm text-neutral-300">
+              <span className="font-medium text-neutral-200">Last renewal date</span>
+              <input
+                type="date"
+                className="rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3 text-neutral-100 outline-none ring-neutral-400 transition focus:ring-2"
+                value={settings.subscriptionLastRenewalDate}
+                onChange={(event) =>
+                  onChange({
+                    subscriptionLastRenewalDate: event.target.value,
+                  })
+                }
+              />
+            </label>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <InfoTile label="Monthly plan value" value={formatUsd(selectedPlan.monthlyCostUsd)} />
+            <InfoTile label="Usage range unlocked" value="This sub period" />
+            <InfoTile
+              label="Billing anchor"
+              value={settings.subscriptionLastRenewalDate || "Required"}
+            />
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-4 text-sm leading-6 text-neutral-400">
+            Enter the date your billing cycle last reset. Codex Pulse rolls that anchor forward
+            month by month so the model usage panel can isolate your current subscription window.
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-6">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 p-2 text-sky-300">
+              <Monitor className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-neutral-100">App preferences</h3>
+              <p className="mt-1 text-sm text-neutral-400">
+                Local display and background watcher behavior.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 space-y-4">
+            <label className="flex flex-col gap-2 text-sm text-neutral-300">
+              <span className="font-medium text-neutral-200">Theme</span>
+              <select
+                className="rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3 text-neutral-100 outline-none ring-neutral-400 transition focus:ring-2"
                 value={settings.theme}
                 onChange={(event) =>
                   onChange({ theme: event.target.value as AppSettings["theme"] })
@@ -61,10 +130,11 @@ export function SettingsPanel({
                 <option value="system">System</option>
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-sm text-neutral-300">
-              Limit card metric
+
+            <label className="flex flex-col gap-2 text-sm text-neutral-300">
+              <span className="font-medium text-neutral-200">Limit card metric</span>
               <select
-                className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100 outline-none ring-neutral-400 focus:ring-2"
+                className="rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3 text-neutral-100 outline-none ring-neutral-400 transition focus:ring-2"
                 value={settings.limitDisplayMode}
                 onChange={(event) =>
                   onChange({
@@ -76,377 +146,111 @@ export function SettingsPanel({
                 <option value="used">Show used</option>
               </select>
             </label>
-          </div>
-          <div className="mt-4 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-300">
-            Poll interval is fixed at <span className="font-semibold text-neutral-100">60 seconds</span>.
-          </div>
-          <div className="mt-4 flex flex-wrap gap-6 text-sm text-neutral-300">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={settings.startAtLogin}
-                onChange={(event) => onChange({ startAtLogin: event.target.checked })}
-              />
-              Start at login
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={settings.notificationsEnabled}
-                onChange={(event) => onChange({ notificationsEnabled: event.target.checked })}
-              />
-              Enable threshold notifications
-            </label>
-          </div>
-        </section>
 
-        <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-          <h3 className="text-sm font-medium text-neutral-200">Provider config</h3>
-          {providers.length === 0 ? (
-            <p className="mt-3 text-sm text-neutral-400">No provider-specific credentials are needed.</p>
-          ) : (
-            <div className="mt-4 grid gap-4">
-              <label className="flex flex-col gap-1 text-sm text-neutral-300">
-                Provider
-                <select
-                  className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100 outline-none ring-neutral-400 focus:ring-2"
-                  value={selectedProvider?.id ?? ""}
-                  onChange={(event) => onSelectProvider(event.target.value as ProviderId)}
-                >
-                  {providers.map((provider) => (
-                    <option key={provider.id} value={provider.id}>
-                      {provider.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {providerConfigLoading ? (
-                <p className="text-xs text-neutral-500">Syncing stored secrets...</p>
-              ) : null}
-              {selectedProvider ? (
-                <ProviderConfigForm
-                  provider={selectedProvider}
-                  config={providerConfig}
-                  saving={providerConfigSaving}
-                  onUpdateProviderSettings={onUpdateProviderSettings}
-                  onUpdateProviderSecrets={onUpdateProviderSecrets}
-                  onClearProviderSecret={(field) => onUpdateProviderSecrets({ [field]: "" })}
-                />
-              ) : null}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ToggleCard
+                checked={settings.startAtLogin}
+                label="Start at login"
+                description="Keep the watcher running in the tray after sign-in."
+                onChange={(checked) => onChange({ startAtLogin: checked })}
+              />
+              <ToggleCard
+                checked={settings.notificationsEnabled}
+                label="Threshold notifications"
+                description="Notify when weekly usage approaches the limit."
+                onChange={(checked) => onChange({ notificationsEnabled: checked })}
+              />
             </div>
-          )}
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <SummaryPill
+              icon={<MoonStar className="h-4 w-4" />}
+              label="Dark mode"
+              value={settings.theme === "dark" ? "Active" : "Optional"}
+            />
+            <SummaryPill
+              icon={<SunMedium className="h-4 w-4" />}
+              label="Poll cadence"
+              value="60 seconds"
+            />
+            <SummaryPill
+              icon={<Monitor className="h-4 w-4" />}
+              label="Scope"
+              value="Codex only"
+            />
+          </div>
         </section>
       </div>
     </section>
   );
 }
 
-export function ProviderConfigForm({
-  provider,
-  config,
-  saving,
-  onUpdateProviderSettings,
-  onUpdateProviderSecrets,
-  onClearProviderSecret,
-}: {
-  provider: ProviderCatalogEntry;
-  config: ProviderConfigurationView;
-  saving: boolean;
-  onUpdateProviderSettings: (partial: Partial<ProviderConnectionSettings>) => Promise<void>;
-  onUpdateProviderSecrets: (partial: ProviderSecretInput) => Promise<void>;
-  onClearProviderSecret: (field: ProviderSecretField) => Promise<void>;
-}) {
-  const providerSettings = config.settings;
-  const modeOptions = provider.settings.modeOptions;
-  const secretFields = provider.settings.secretFields;
-  const [secretInputs, setSecretInputs] = useState<Record<ProviderSecretField, string>>({
-    apiKey: "",
-    bearerToken: "",
-    refreshToken: "",
-    sessionCookie: "",
-  });
-
-  useEffect(() => {
-    setSecretInputs({
-      apiKey: "",
-      bearerToken: "",
-      refreshToken: "",
-      sessionCookie: "",
-    });
-  }, [provider.id]);
-
-  const secretStatus = useMemo(
-    () => ({
-      apiKey: config.secretFlags.hasApiKey,
-      bearerToken: config.secretFlags.hasBearerToken,
-      refreshToken: config.secretFlags.hasRefreshToken,
-      sessionCookie: config.secretFlags.hasSessionCookie,
-    }),
-    [config.secretFlags],
-  );
-
-  return (
-    <div className="space-y-3">
-      <p className="text-xs text-neutral-400">{provider.settings.hint}</p>
-
-      {provider.settings.showAdvancedFields ? (
-        <>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="flex flex-col gap-1 text-sm text-neutral-300">
-              Collector mode
-              <select
-                disabled={saving}
-                className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100 outline-none ring-neutral-400 focus:ring-2 disabled:opacity-60"
-                value={providerSettings.mode}
-                onChange={(event) =>
-                  void onUpdateProviderSettings({
-                    mode: event.target.value as ProviderConnectionSettings["mode"],
-                  })
-                }
-              >
-                {modeOptions.map((mode) => (
-                  <option key={mode} value={mode}>
-                    {mode}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="mt-7 flex items-center gap-2 text-sm text-neutral-300">
-              <input
-                type="checkbox"
-                checked={providerSettings.enabled}
-                disabled={saving}
-                onChange={(event) =>
-                  void onUpdateProviderSettings({
-                    enabled: event.target.checked,
-                  })
-                }
-              />
-              Provider enabled
-            </label>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            {modeOptions.includes("api") || modeOptions.includes("web") ? (
-              <TextField
-                label="API base URL"
-                value={providerSettings.apiBaseUrl}
-                disabled={saving}
-                onBlurSave={(value) => onUpdateProviderSettings({ apiBaseUrl: value })}
-              />
-            ) : null}
-            {modeOptions.includes("cli") ? (
-              <TextField
-                label="CLI path"
-                value={providerSettings.cliPath}
-                disabled={saving}
-                onBlurSave={(value) => onUpdateProviderSettings({ cliPath: value })}
-              />
-            ) : null}
-            <TextField
-              label="Account ID"
-              value={providerSettings.accountId}
-              disabled={saving}
-              onBlurSave={(value) => onUpdateProviderSettings({ accountId: value })}
-            />
-            <TextField
-              label="Workspace path"
-              value={providerSettings.workspacePath}
-              disabled={saving}
-              onBlurSave={(value) => onUpdateProviderSettings({ workspacePath: value })}
-            />
-          </div>
-
-          {modeOptions.includes("api") || modeOptions.includes("web") ? (
-            <TextAreaField
-              label="Headers JSON"
-              value={providerSettings.headersJson}
-              disabled={saving}
-              rows={3}
-              onBlurSave={(value) => onUpdateProviderSettings({ headersJson: value })}
-            />
-          ) : null}
-          <TextAreaField
-            label="Notes"
-            value={providerSettings.notes}
-            disabled={saving}
-            rows={2}
-            onBlurSave={(value) => onUpdateProviderSettings({ notes: value })}
-          />
-        </>
-      ) : null}
-
-      {secretFields.length > 0 ? (
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-3">
-          <h4 className="text-sm font-medium text-neutral-200">
-            Secrets (stored in encrypted app storage)
-          </h4>
-          <p className="mt-1 text-xs text-neutral-400">
-            Secret values are never shown after saving. Enter a value and click save to replace it.
-          </p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {secretFields.map((field) => (
-              <SecretField
-                key={field}
-                label={secretFieldLabel(field)}
-                value={secretInputs[field]}
-                status={secretStatus[field]}
-                disabled={saving}
-                onChange={(value) => setSecretInputs((prev) => ({ ...prev, [field]: value }))}
-                onSave={async () => {
-                  await onUpdateProviderSecrets({ [field]: secretInputs[field] } as ProviderSecretInput);
-                  setSecretInputs((prev) => ({ ...prev, [field]: "" }));
-                }}
-                onClear={() => onClearProviderSecret(field)}
-              />
-            ))}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function secretFieldLabel(field: ProviderSecretField): string {
-  switch (field) {
-    case "apiKey":
-      return "API key";
-    case "bearerToken":
-      return "Bearer token";
-    case "refreshToken":
-      return "Refresh token";
-    case "sessionCookie":
-      return "Session cookie";
-    default:
-      return field;
-  }
-}
-
-function TextField({
+function SummaryPill({
+  icon,
   label,
   value,
-  disabled,
-  onBlurSave,
 }: {
+  icon: ReactNode;
   label: string;
   value: string;
-  disabled: boolean;
-  onBlurSave: (value: string) => Promise<void>;
-}) {
-  const [draft, setDraft] = useState(value);
-
-  useEffect(() => {
-    setDraft(value);
-  }, [value]);
-
-  return (
-    <label className="flex flex-col gap-1 text-sm text-neutral-300">
-      {label}
-      <input
-        type="text"
-        value={draft}
-        disabled={disabled}
-        className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100 outline-none ring-neutral-400 focus:ring-2 disabled:opacity-60"
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={() => {
-          if (draft !== value) {
-            void onBlurSave(draft);
-          }
-        }}
-      />
-    </label>
-  );
-}
-
-function TextAreaField({
-  label,
-  value,
-  rows,
-  disabled,
-  onBlurSave,
-}: {
-  label: string;
-  value: string;
-  rows: number;
-  disabled: boolean;
-  onBlurSave: (value: string) => Promise<void>;
-}) {
-  const [draft, setDraft] = useState(value);
-
-  useEffect(() => {
-    setDraft(value);
-  }, [value]);
-
-  return (
-    <label className="flex flex-col gap-1 text-sm text-neutral-300">
-      {label}
-      <textarea
-        value={draft}
-        rows={rows}
-        disabled={disabled}
-        className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100 outline-none ring-neutral-400 focus:ring-2 disabled:opacity-60"
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={() => {
-          if (draft !== value) {
-            void onBlurSave(draft);
-          }
-        }}
-      />
-    </label>
-  );
-}
-
-function SecretField({
-  label,
-  value,
-  status,
-  disabled,
-  onChange,
-  onSave,
-  onClear,
-}: {
-  label: string;
-  value: string;
-  status: boolean;
-  disabled: boolean;
-  onChange: (value: string) => void;
-  onSave: () => Promise<void>;
-  onClear: () => Promise<void>;
 }) {
   return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-3">
-      <label className="flex flex-col gap-1 text-sm text-neutral-300">
-        {label}
-        <input
-          type="password"
-          value={value}
-          disabled={disabled}
-          className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100 outline-none ring-neutral-400 focus:ring-2 disabled:opacity-60"
-          onChange={(event) => onChange(event.target.value)}
-          placeholder="Enter new value..."
-        />
-      </label>
-      <p className={`mt-2 text-xs ${status ? "text-emerald-300" : "text-neutral-500"}`}>
-        {status ? "Saved" : "Not set"}
-      </p>
-      <div className="mt-2 flex gap-2">
-        <button
-          type="button"
-          disabled={disabled || value.trim().length === 0}
-          className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={() => void onSave()}
-        >
-          Save
-        </button>
-        <button
-          type="button"
-          disabled={disabled || !status}
-          className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={() => void onClear()}
-        >
-          Clear
-        </button>
+    <div className="flex items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3">
+      <div className="text-neutral-400">{icon}</div>
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+          {label}
+        </p>
+        <p className="mt-1 text-sm font-medium text-neutral-100">{value}</p>
       </div>
     </div>
   );
+}
+
+function InfoTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+        {label}
+      </p>
+      <p className="mt-2 text-sm font-medium text-neutral-100">{value}</p>
+    </div>
+  );
+}
+
+function ToggleCard({
+  checked,
+  label,
+  description,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  description: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-4">
+      <input
+        type="checkbox"
+        checked={checked}
+        className="mt-1 h-4 w-4 rounded border-neutral-600 bg-neutral-900 text-emerald-500"
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span>
+        <span className="block text-sm font-medium text-neutral-100">{label}</span>
+        <span className="mt-1 block text-sm leading-5 text-neutral-400">{description}</span>
+      </span>
+    </label>
+  );
+}
+
+function formatUsd(value: number): string {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
 }

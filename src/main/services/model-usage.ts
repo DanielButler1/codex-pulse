@@ -101,7 +101,7 @@ export async function getModelUsageSummary(
   const since =
     range === "all"
       ? 0
-      : range === "period"
+      : range === "period" || range === "sub_period"
         ? Math.max(0, periodStart ?? generatedAt - RANGE_TO_MS["7d"])
         : generatedAt - RANGE_TO_MS[range];
   const timelineGranularity = resolveTimelineGranularity(range);
@@ -456,6 +456,7 @@ function resolveTimelineGranularity(range: ModelUsageRange): TimelineGranularity
     case "30d":
       return "1d";
     case "period":
+    case "sub_period":
       return "6h";
     case "all":
     default:

@@ -11,7 +11,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { ModelUsageRange, ModelUsageSummary } from "../lib/types";
+import { Settings2 } from "lucide-react";
+import { SUBSCRIPTION_PLAN_META } from "../../../shared/subscription-plans";
+import type { AppSettings, ModelUsageRange, ModelUsageSummary } from "../lib/types";
 import { ModelUsageHeatmap } from "./ModelUsageHeatmap";
 import type { ModelUsageHeatmapData } from "../lib/types";
 
@@ -19,9 +21,11 @@ type ModelUsageTableProps = {
   summary: ModelUsageSummary | null;
   heatmap: ModelUsageHeatmapData | null;
   heatmapLoading: boolean;
+  settings: AppSettings;
   range: ModelUsageRange;
   loading: boolean;
   onRangeChange: (range: ModelUsageRange) => void;
+  onOpenSettings: () => void;
 };
 
 type ChartMode = "requests" | "tokens";
@@ -34,6 +38,7 @@ const RANGE_OPTIONS: Array<{ value: ModelUsageRange; label: string }> = [
   { value: "7d", label: "7d" },
   { value: "30d", label: "30d" },
   { value: "period", label: "This period" },
+  { value: "sub_period", label: "This sub period" },
   { value: "all", label: "All time" },
 ];
 
@@ -41,9 +46,11 @@ export function ModelUsageTable({
   summary,
   heatmap,
   heatmapLoading,
+  settings,
   range,
   loading,
   onRangeChange,
+  onOpenSettings,
 }: ModelUsageTableProps) {
   const [chartMode, setChartMode] = useState<ChartMode>("tokens");
   const [timelineMetric, setTimelineMetric] = useState<TimelineMetric>("tokens");
@@ -145,6 +152,30 @@ export function ModelUsageTable({
       projectedCostUsd: estimatedCostSoFar / elapsedRatio,
     };
   }, [summary]);
+  const subscriptionContext = useMemo(() => {
+    const meta = SUBSCRIPTION_PLAN_META[settings.subscriptionPlan];
+    const period = resolveSubscriptionPeriod(settings.subscriptionLastRenewalDate);
+    if (!period) {
+      return {
+        configured: false,
+        planLabel: meta.label,
+        monthlyCostUsd: meta.monthlyCostUsd,
+        periodStart: null,
+        periodEnd: null,
+      };
+    }
+    return {
+      configured: true,
+      planLabel: meta.label,
+      monthlyCostUsd: meta.monthlyCostUsd,
+      periodStart: period.start,
+      periodEnd: period.end,
+    };
+  }, [settings.subscriptionLastRenewalDate, settings.subscriptionPlan]);
+  const subscriptionValueRatio =
+    subscriptionContext.monthlyCostUsd > 0 && summary?.totals.estimatedCostUsd != null
+      ? summary.totals.estimatedCostUsd / subscriptionContext.monthlyCostUsd
+      : null;
 
   return (
     <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
@@ -154,7 +185,9 @@ export function ModelUsageTable({
           <p className="text-sm text-neutral-400">
             {range === "period"
               ? "Requests and token usage by model in the current rate limit period"
-              : "Requests and token usage by model from local rollout logs"}
+              : range === "sub_period"
+                ? "Requests and token usage by model in the current subscription period"
+                : "Requests and token usage by model from local rollout logs"}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -188,6 +221,23 @@ export function ModelUsageTable({
 
       {loading ? (
         <p className="mt-4 text-sm text-neutral-400">Loading model usage...</p>
+      ) : range === "sub_period" && !subscriptionContext.configured ? (
+        <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/8 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-amber-100">Subscription period needs setup</p>
+            <p className="mt-1 text-sm text-amber-100/75">
+              Set your subscription plan and last renewal date to use this sub-period view.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="inline-flex items-center gap-2 self-start rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm font-medium text-amber-50 transition hover:border-amber-300/50 hover:bg-amber-400/15"
+          >
+            <Settings2 className="h-4 w-4" />
+            <span>Open settings</span>
+          </button>
+        </div>
       ) : summary == null ? (
         <p className="mt-4 text-sm text-neutral-400">No model usage events found for this range.</p>
       ) : (
@@ -458,6 +508,32 @@ export function ModelUsageTable({
                     </p>
                   </div>
                 </div>
+                {range === "sub_period" ? (
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                      <p className="text-xs uppercase tracking-wide text-neutral-500">Sub period value</p>
+                      <p className="mt-1 text-lg font-semibold text-neutral-100">
+                        {formatUsd(summary.totals.estimatedCostUsd)}
+                      </p>
+                      <p className="text-xs text-neutral-400">
+                        {subscriptionValueRatio != null
+                          ? `${subscriptionValueRatio.toFixed(2)}x of ${subscriptionContext.planLabel} plan price`
+                          : `${subscriptionContext.planLabel} plan`}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                      <p className="text-xs uppercase tracking-wide text-neutral-500">Billing period</p>
+                      <p className="mt-1 text-lg font-semibold text-neutral-100">
+                        {formatDateRange(subscriptionContext.periodStart, subscriptionContext.periodEnd)}
+                      </p>
+                      <p className="text-xs text-neutral-400">
+                        {subscriptionContext.monthlyCostUsd > 0
+                          ? `${subscriptionContext.planLabel} at ${formatUsd(subscriptionContext.monthlyCostUsd)} / month`
+                          : "Free plan"}
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
 
 	        </div>
 	        </>
@@ -489,6 +565,60 @@ function formatCompactInt(value: number | null | undefined): string {
     return "0";
   }
   return new Intl.NumberFormat(undefined, { notation: "compact" }).format(Math.max(0, value));
+}
+
+function formatDateRange(start: number | null, end: number | null): string {
+  if (start == null || end == null) {
+    return "Not configured";
+  }
+  return `${new Date(start).toLocaleDateString()} - ${new Date(end).toLocaleDateString()}`;
+}
+
+function resolveSubscriptionPeriod(
+  renewalDate: string,
+): { start: number; end: number } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(renewalDate)) {
+    return null;
+  }
+  const [yearText, monthText, dayText] = renewalDate.split("-");
+  const year = Number(yearText);
+  const monthIndex = Number(monthText) - 1;
+  const day = Number(dayText);
+  if (!Number.isFinite(year) || !Number.isFinite(monthIndex) || !Number.isFinite(day)) {
+    return null;
+  }
+
+  const seed = new Date(year, monthIndex, day);
+  seed.setHours(0, 0, 0, 0);
+  if (Number.isNaN(seed.getTime())) {
+    return null;
+  }
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  let currentStart = seed;
+  let nextStart = addMonthsClamped(seed, 1);
+  while (nextStart.getTime() <= now.getTime()) {
+    currentStart = nextStart;
+    nextStart = addMonthsClamped(currentStart, 1);
+  }
+
+  return {
+    start: currentStart.getTime(),
+    end: nextStart.getTime(),
+  };
+}
+
+function addMonthsClamped(date: Date, months: number): Date {
+  const year = date.getFullYear();
+  const monthIndex = date.getMonth() + months;
+  const day = date.getDate();
+  const targetYear = year + Math.floor(monthIndex / 12);
+  const normalizedMonth = ((monthIndex % 12) + 12) % 12;
+  const maxDay = new Date(targetYear, normalizedMonth + 1, 0).getDate();
+  const next = new Date(targetYear, normalizedMonth, Math.min(day, maxDay));
+  next.setHours(0, 0, 0, 0);
+  return next;
 }
 
 function formatUsd(value: number | null | undefined): string {

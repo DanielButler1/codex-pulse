@@ -28,6 +28,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   notificationsEnabled: true,
   theme: "dark",
   limitDisplayMode: "remaining",
+  subscriptionPlan: "free",
+  subscriptionLastRenewalDate: "",
   providerSettings: buildDefaultProviderSettings(),
 };
 
@@ -103,8 +105,31 @@ function sanitizeSettings(input: SettingsFile): AppSettings {
         : DEFAULT_SETTINGS.notificationsEnabled,
     theme,
     limitDisplayMode,
+    subscriptionPlan: sanitizeSubscriptionPlan(input.subscriptionPlan),
+    subscriptionLastRenewalDate: sanitizeRenewalDate(input.subscriptionLastRenewalDate),
     providerSettings,
   };
+}
+
+function sanitizeSubscriptionPlan(value: AppSettings["subscriptionPlan"] | undefined): AppSettings["subscriptionPlan"] {
+  switch (value) {
+    case "go":
+    case "plus":
+    case "pro_5x":
+    case "pro_20x":
+    case "free":
+      return value;
+    default:
+      return DEFAULT_SETTINGS.subscriptionPlan;
+  }
+}
+
+function sanitizeRenewalDate(value: string | undefined): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const trimmed = value.trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : "";
 }
 
 function sanitizeProviderSettings(

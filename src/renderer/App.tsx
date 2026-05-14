@@ -11,9 +11,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Download, RefreshCw, Settings2, X } from "lucide-react";
+import { Download, RefreshCw, Settings2 } from "lucide-react";
 import { ModelUsageTable } from "./components/ModelUsageTable";
-import { ProviderConfigForm, SettingsPanel } from "./components/SettingsPanel";
+import { SettingsPanel } from "./components/SettingsPanel";
 import { StatusBar } from "./components/StatusBar";
 import {
   formatBurnRate,
@@ -26,8 +26,7 @@ import { getProviderLogoPath } from "./lib/provider-icons";
 import {
   PROVIDER_CATALOG,
   PROVIDER_IDS,
-  type ProviderCatalogEntry,
-  type ProviderId,
+    type ProviderId,
 } from "../../shared/provider-catalog";
 import type {
   AppSettings,
@@ -36,11 +35,6 @@ import type {
   ModelUsageHeatmapData,
   ModelUsageRange,
   ModelUsageSummary,
-  ProviderConfigurationView,
-  ProviderConnectionSettings,
-  ProviderSecretFlags,
-  ProviderSecretInput,
-  ProviderUsageResult,
   UsageSnapshot,
 } from "./lib/types";
 
@@ -50,6 +44,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   notificationsEnabled: true,
   theme: "dark",
   limitDisplayMode: "remaining",
+  subscriptionPlan: "free",
+  subscriptionLastRenewalDate: "",
   providerSettings: Object.fromEntries(
     PROVIDER_IDS.map((providerId) => [
       providerId,
@@ -67,7 +63,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   ),
 };
 const MODEL_USAGE_BACKGROUND_REFRESH_MS = 5 * 60 * 1000;
-const OPENROUTER_USAGE_BACKGROUND_REFRESH_MS = 5 * 60 * 1000;
 
 type WeeklyWindowOption = {
   offset: number;
@@ -92,86 +87,9 @@ type PredictionTimeline = {
   points: PredictionTimelinePoint[];
 };
 
-type OpenRouterKeyData = {
-  label?: string | null;
-  limit?: number | string | null;
-  limit_remaining?: number | string | null;
-  limit_reset?: string | null;
-  usage?: number | string | null;
-  usage_daily?: number | string | null;
-  usage_weekly?: number | string | null;
-  usage_monthly?: number | string | null;
-  byok_usage?: number | string | null;
-  byok_usage_daily?: number | string | null;
-  byok_usage_weekly?: number | string | null;
-  byok_usage_monthly?: number | string | null;
-  is_free_tier?: boolean | null;
-  is_management_key?: boolean | null;
-  is_provisioning_key?: boolean | null;
-};
-
-type OpenRouterActivityItem = {
-  date?: string | null;
-  model?: string | null;
-  model_permaslug?: string | null;
-  endpoint_id?: string | null;
-  provider_name?: string | null;
-  usage?: number | string | null;
-  byok_usage_inference?: number | string | null;
-  requests?: number | string | null;
-  prompt_tokens?: number | string | null;
-  completion_tokens?: number | string | null;
-  reasoning_tokens?: number | string | null;
-};
-
-type OpenRouterCreditsData = {
-  total_credits?: number | string | null;
-  total_usage?: number | string | null;
-};
-
-type OpenRouterActivityRow = {
-  id: string;
-  model: string;
-  provider: string;
-  requests: number;
-  usage: number;
-  promptTokens: number;
-  completionTokens: number;
-  reasoningTokens: number;
-};
-
-type OpenRouterActivitySummary = {
-  totalRequests: number;
-  totalUsage: number;
-  totalPromptTokens: number;
-  totalCompletionTokens: number;
-  totalReasoningTokens: number;
-  rows: OpenRouterActivityRow[];
-};
-
 export default function App() {
   const isDevBuild = import.meta.env.DEV;
-  const sortedProviders = useMemo(
-    () =>
-      [...PROVIDER_CATALOG].sort((left, right) => {
-        const leftRank = left.availability === "active" ? 0 : 1;
-        const rightRank = right.availability === "active" ? 0 : 1;
-        if (leftRank !== rightRank) {
-          return leftRank - rightRank;
-        }
-        return left.label.localeCompare(right.label);
-      }),
-    [],
-  );
-  const configurableProviders = useMemo(
-    () => PROVIDER_CATALOG.filter((provider) => provider.settings.requiresManualConfig),
-    [],
-  );
-  const defaultSettingsProviderId = (configurableProviders[0]?.id ?? "openrouter") as ProviderId;
   const [showSettings, setShowSettings] = useState(false);
-  const [selectedProviderId, setSelectedProviderId] = useState<ProviderId>("codex");
-  const [selectedSettingsProviderId, setSelectedSettingsProviderId] =
-    useState<ProviderId>(defaultSettingsProviderId);
   const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
   const [modelRange, setModelRange] = useState<ModelUsageRange>("24h");
   const [history, setHistory] = useState<UsageSnapshot[]>([]);
@@ -183,16 +101,9 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [modelUsageLoading, setModelUsageLoading] = useState(false);
-  const [providerUsage, setProviderUsage] = useState<ProviderUsageResult | null>(null);
-  const [providerUsageLoading, setProviderUsageLoading] = useState(false);
-  const [providerConfigs, setProviderConfigs] = useState<Partial<Record<ProviderId, ProviderConfigurationView>>>({});
-  const [providerConfigLoading, setProviderConfigLoading] = useState(false);
-  const [providerConfigSaving, setProviderConfigSaving] = useState(false);
-  const [providerDialogProviderId, setProviderDialogProviderId] = useState<ProviderId | null>(null);
   const [updateState, setUpdateState] = useState<AppUpdateState | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const lastModelUsageLoadAtRef = useRef(0);
-  const lastProviderUsageLoadAtRef = useRef<Partial<Record<ProviderId, number>>>({});
   const modelUsageReferenceRef = useRef<UsageSnapshot | null>(null);
 
   useEffect(() => {
@@ -230,14 +141,22 @@ export default function App() {
   const loadModelUsage = useCallback(async (range: ModelUsageRange, referenceUsage: UsageSnapshot | null = modelUsageReferenceRef.current) => {
     setModelUsageLoading(true);
     try {
-      const periodStart = range === "period" ? resolveRateLimitPeriodStart(referenceUsage) : null;
+      const periodStart =
+        range === "period"
+          ? resolveRateLimitPeriodStart(referenceUsage)
+          : range === "sub_period"
+            ? resolveSubscriptionPeriodStart(settings.subscriptionLastRenewalDate)
+            : null;
       const summary = await codexPulseApi.getModelUsage(range, periodStart);
       setModelUsage(summary);
       lastModelUsageLoadAtRef.current = Date.now();
+    } catch (error) {
+      console.error("Failed to load model usage", { range, error });
+      setModelUsage(null);
     } finally {
       setModelUsageLoading(false);
     }
-  }, []);
+  }, [settings.subscriptionLastRenewalDate]);
 
   const loadModelHeatmap = useCallback(async () => {
     setModelHeatmapLoading(true);
@@ -248,33 +167,6 @@ export default function App() {
       setModelHeatmap(null);
     } finally {
       setModelHeatmapLoading(false);
-    }
-  }, []);
-
-  const loadProviderUsage = useCallback(async (providerId: ProviderId, force = false) => {
-    if (providerId === "openrouter" && !force) {
-      const lastLoadedAt = lastProviderUsageLoadAtRef.current[providerId] ?? 0;
-      if (lastLoadedAt > 0 && Date.now() - lastLoadedAt < OPENROUTER_USAGE_BACKGROUND_REFRESH_MS) {
-        return;
-      }
-    }
-    setProviderUsageLoading(true);
-    try {
-      const usage = await codexPulseApi.getProviderUsage(providerId);
-      setProviderUsage(usage);
-      lastProviderUsageLoadAtRef.current[providerId] = Date.now();
-    } finally {
-      setProviderUsageLoading(false);
-    }
-  }, []);
-
-  const loadProviderConfig = useCallback(async (providerId: ProviderId) => {
-    setProviderConfigLoading(true);
-    try {
-      const config = await codexPulseApi.getProviderConfig(providerId);
-      setProviderConfigs((prev) => ({ ...prev, [providerId]: config }));
-    } finally {
-      setProviderConfigLoading(false);
     }
   }, []);
 
@@ -298,8 +190,33 @@ export default function App() {
   }, [load, loadSettings, loadUpdateState]);
 
   useEffect(() => {
-    if (selectedProviderId !== "codex") {
-      setModelUsage(null);
+    if (modelRange === "period") {
+      const referenceUsage = modelUsageReferenceRef.current;
+      if (!referenceUsage) {
+        return;
+      }
+      void loadModelUsage("period", referenceUsage);
+      return;
+    }
+    if (modelRange === "sub_period") {
+      if (!resolveSubscriptionPeriodStart(settings.subscriptionLastRenewalDate)) {
+        setModelUsage(null);
+        return;
+      }
+      void loadModelUsage("sub_period");
+      return;
+    }
+    void loadModelUsage(modelRange);
+  }, [loadModelUsage, modelRange, settings.subscriptionLastRenewalDate]);
+
+  useEffect(() => {
+    if (modelRange !== "period" && modelRange !== "sub_period") {
+      return;
+    }
+    if (
+      modelUsage != null &&
+      Date.now() - lastModelUsageLoadAtRef.current < MODEL_USAGE_BACKGROUND_REFRESH_MS
+    ) {
       return;
     }
     if (modelRange === "period") {
@@ -310,64 +227,15 @@ export default function App() {
       void loadModelUsage("period", referenceUsage);
       return;
     }
-    void loadModelUsage(modelRange);
-  }, [loadModelUsage, modelRange, selectedProviderId]);
-
-  useEffect(() => {
-    if (selectedProviderId !== "codex" || modelRange !== "period") {
+    if (!resolveSubscriptionPeriodStart(settings.subscriptionLastRenewalDate)) {
       return;
     }
-    const referenceUsage = modelUsageReferenceRef.current;
-    if (!referenceUsage) {
-      return;
-    }
-    if (
-      modelUsage != null &&
-      Date.now() - lastModelUsageLoadAtRef.current < MODEL_USAGE_BACKGROUND_REFRESH_MS
-    ) {
-      return;
-    }
-    void loadModelUsage("period", referenceUsage);
-  }, [loadModelUsage, modelRange, modelUsage, selectedProviderId]);
+    void loadModelUsage("sub_period");
+  }, [loadModelUsage, modelRange, modelUsage, settings.subscriptionLastRenewalDate]);
 
   useEffect(() => {
     void loadModelHeatmap();
   }, [loadModelHeatmap]);
-
-  useEffect(() => {
-    if (PROVIDER_CATALOG.find((provider) => provider.id === selectedProviderId)?.availability === "active") {
-      void loadProviderUsage(selectedProviderId);
-    } else {
-      setProviderUsage(null);
-    }
-  }, [loadProviderUsage, selectedProviderId]);
-
-  useEffect(() => {
-    if (!showSettings && providerDialogProviderId == null) {
-      return;
-    }
-    if (!configurableProviders.some((provider) => provider.id === selectedSettingsProviderId)) {
-      setSelectedSettingsProviderId(defaultSettingsProviderId);
-      return;
-    }
-    setProviderConfigs((prev) => ({
-      ...prev,
-      [selectedSettingsProviderId]: buildLocalProviderConfig(
-        selectedSettingsProviderId,
-        settings,
-        prev[selectedSettingsProviderId]?.secretFlags,
-      ),
-    }));
-    void loadProviderConfig(selectedSettingsProviderId);
-  }, [
-    configurableProviders,
-    defaultSettingsProviderId,
-    loadProviderConfig,
-    selectedSettingsProviderId,
-    settings,
-    showSettings,
-    providerDialogProviderId,
-  ]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -375,22 +243,13 @@ export default function App() {
       void load();
       void loadSettings();
       void loadUpdateState();
-      if (PROVIDER_CATALOG.find((provider) => provider.id === selectedProviderId)?.availability === "active") {
-        void loadProviderUsage(selectedProviderId);
-      }
     }, 15_000);
     const unsubscribe = codexPulseApi.subscribe(() => {
       setNowMs(Date.now());
       void load();
       void loadSettings();
       void loadUpdateState();
-      if (PROVIDER_CATALOG.find((provider) => provider.id === selectedProviderId)?.availability === "active") {
-        void loadProviderUsage(selectedProviderId);
-      }
-      if (
-        selectedProviderId === "codex" &&
-        Date.now() - lastModelUsageLoadAtRef.current >= MODEL_USAGE_BACKGROUND_REFRESH_MS
-      ) {
+      if (Date.now() - lastModelUsageLoadAtRef.current >= MODEL_USAGE_BACKGROUND_REFRESH_MS) {
         void loadModelUsage(modelRange);
       }
     });
@@ -401,11 +260,9 @@ export default function App() {
   }, [
     load,
     loadModelUsage,
-    loadProviderUsage,
     loadSettings,
     loadUpdateState,
     modelRange,
-    selectedProviderId,
   ]);
 
   useEffect(() => {
@@ -448,32 +305,11 @@ export default function App() {
     const latestUsage = await load();
     await Promise.all([
       loadModelHeatmap(),
-      selectedProviderId === "codex"
-        ? modelRange === "period"
-          ? loadModelUsage("period", latestUsage ?? modelUsageReferenceRef.current)
-          : loadModelUsage(modelRange)
-        : Promise.resolve(),
-      PROVIDER_CATALOG.find((provider) => provider.id === selectedProviderId)?.availability === "active"
-        ? loadProviderUsage(selectedProviderId, true)
-        : Promise.resolve(),
+      modelRange === "period"
+        ? loadModelUsage("period", latestUsage ?? modelUsageReferenceRef.current)
+        : loadModelUsage(modelRange),
     ]);
-  }, [load, loadModelHeatmap, loadModelUsage, loadProviderUsage, modelRange, selectedProviderId]);
-
-  const openProviderDialog = useCallback(
-    (providerId: ProviderId) => {
-      if (!configurableProviders.some((provider) => provider.id === providerId)) {
-        return;
-      }
-      setShowSettings(false);
-      setProviderDialogProviderId(providerId);
-      setSelectedSettingsProviderId(providerId);
-    },
-    [configurableProviders],
-  );
-
-  const closeProviderDialog = useCallback(() => {
-    setProviderDialogProviderId(null);
-  }, []);
+  }, [load, loadModelHeatmap, loadModelUsage, modelRange]);
 
   const onModelRangeChange = useCallback(
     (range: ModelUsageRange) => {
@@ -482,57 +318,23 @@ export default function App() {
     [],
   );
 
+  const onOpenSettings = useCallback(() => {
+    setShowSettings(true);
+  }, []);
+
   const onSettingsChange = useCallback(
     async (partial: Partial<AppSettings>) => {
       const merged = { ...settings, ...partial };
       setSettings(merged);
-      await codexPulseApi.updateSettings(partial);
-      await Promise.allSettled([load(), loadSettings()]);
-    },
-    [load, loadSettings, settings],
-  );
-
-  const onUpdateProviderSettings = useCallback(
-    async (partial: Partial<ProviderConnectionSettings>) => {
-      setProviderConfigSaving(true);
       try {
-        const updated = await codexPulseApi.updateProviderConfig({
-          providerId: selectedSettingsProviderId,
-          settings: partial,
-        });
-        setProviderConfigs((prev) => ({ ...prev, [selectedSettingsProviderId]: updated }));
-        setSettings((prev) => ({
-          ...prev,
-          providerSettings: {
-            ...prev.providerSettings,
-            [selectedSettingsProviderId]: updated.settings,
-          },
-        }));
-      } finally {
-        setProviderConfigSaving(false);
+        await codexPulseApi.updateSettings(partial);
+      } catch (error) {
+        console.error("Failed to update settings", error);
+        setSettings(settings);
       }
     },
-    [selectedSettingsProviderId],
+    [settings],
   );
-
-  const onUpdateProviderSecrets = useCallback(
-    async (partial: ProviderSecretInput) => {
-      setProviderConfigSaving(true);
-      try {
-        const updated = await codexPulseApi.updateProviderConfig({
-          providerId: selectedSettingsProviderId,
-          secrets: partial,
-        });
-        setProviderConfigs((prev) => ({ ...prev, [selectedSettingsProviderId]: updated }));
-      } finally {
-        setProviderConfigSaving(false);
-      }
-    },
-    [selectedSettingsProviderId],
-  );
-  const selectedProviderConfig =
-    providerConfigs[selectedSettingsProviderId] ??
-    buildLocalProviderConfig(selectedSettingsProviderId, settings);
 
   const authMessage = useMemo(() => {
     if (!status) {
@@ -547,33 +349,9 @@ export default function App() {
     return "Auth status healthy.";
   }, [status]);
   const selectedProvider =
-    PROVIDER_CATALOG.find((provider) => provider.id === selectedProviderId) ?? PROVIDER_CATALOG[0];
-  const providerDashboard = selectedProvider.dashboard;
-  const selectedProviderUsage =
-    providerUsage?.providerId === selectedProviderId ? providerUsage : null;
-  const dialogProvider =
-    providerDialogProviderId != null
-      ? PROVIDER_CATALOG.find((provider) => provider.id === providerDialogProviderId) ?? null
-      : null;
-  const dialogProviderConfig =
-    providerDialogProviderId != null
-      ? providerConfigs[providerDialogProviderId] ??
-        buildLocalProviderConfig(providerDialogProviderId, settings)
-      : null;
-  const providerAlertMessage = useMemo(
-    () => getProviderAlertMessage(selectedProvider, selectedProviderUsage),
-    [selectedProvider, selectedProviderUsage],
-  );
-
-  const activeSnapshot = selectedProviderId === "codex" ? latest : selectedProviderUsage?.snapshot ?? null;
-  const activeAuthMessage =
-    selectedProviderId === "codex"
-      ? authMessage
-      : providerUsageLoading && selectedProviderUsage == null
-        ? `Loading ${selectedProvider?.label} usage...`
-        : selectedProviderUsage?.error ??
-          selectedProviderUsage?.note ??
-          (selectedProviderUsage?.snapshot ? "Provider usage loaded." : "No provider usage data yet.");
+    PROVIDER_CATALOG.find((provider) => provider.id === "codex") ?? PROVIDER_CATALOG[0];
+  const activeSnapshot = latest;
+  const activeAuthMessage = authMessage;
 
   const primaryResetLive = calculateLiveResetSeconds(
     activeSnapshot?.primaryResetAfterSeconds,
@@ -640,36 +418,15 @@ export default function App() {
               </span>
             ) : null}
           </div>
-          <p className="mt-1 text-xs text-neutral-400">Provider usage dashboard</p>
+          <p className="mt-1 text-xs text-neutral-400">Local usage monitor for Codex.</p>
         </div>
-        <div className="custom-scrollbar mt-4 flex-1 overflow-y-auto pr-1">
-          <div className="space-y-1">
-            {sortedProviders.map((provider) => (
-              <button
-                key={provider.id}
-                type="button"
-                onClick={() => {
-                  setShowSettings(false);
-                  setProviderDialogProviderId(null);
-                  setSelectedProviderId(provider.id);
-                }}
-                className={`w-full rounded-lg border px-3 py-2 text-left transition ${
-                  selectedProviderId === provider.id && !showSettings
-                    ? "border-neutral-600 bg-neutral-800 text-white"
-                    : "border-neutral-800 bg-neutral-900 text-neutral-300 hover:border-neutral-700"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <ProviderLogo providerId={provider.id} label={provider.shortLabel} />
-                    <span className="truncate text-sm font-medium">{provider.shortLabel}</span>
-                  </span>
-                </div>
-                {provider.availability === "inactive" ? (
-                  <p className="mt-1 text-[11px] text-neutral-500">Coming soon</p>
-                ) : null}
-              </button>
-            ))}
+        <div className="mt-4 flex-1 px-2">
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">Dashboard</p>
+            <p className="mt-2 text-sm font-medium text-neutral-100">Codex</p>
+            <p className="mt-1 text-xs leading-5 text-neutral-400">
+              Weekly limits, projection, rollout usage, and subscription period tracking.
+            </p>
           </div>
         </div>
         <div className="space-y-2 border-t border-neutral-800 pt-3">
@@ -704,14 +461,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => {
-              const selected = PROVIDER_CATALOG.find(
-                (provider) => provider.id === selectedProviderId,
-              );
-              if (selected?.settings.requiresManualConfig) {
-                setSelectedSettingsProviderId(selectedProviderId);
-              }
-              setProviderDialogProviderId(null);
-              setShowSettings(true);
+              setShowSettings((current) => !current);
             }}
             className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition ${
               showSettings
@@ -749,62 +499,22 @@ export default function App() {
           ) : showSettings ? (
             <SettingsPanel
               settings={settings}
-              selectedProviderId={selectedSettingsProviderId}
-              providerConfig={selectedProviderConfig}
-              providerConfigLoading={providerConfigLoading}
-              providerConfigSaving={providerConfigSaving}
-              providers={configurableProviders}
-              onSelectProvider={setSelectedSettingsProviderId}
               onChange={onSettingsChange}
-              onUpdateProviderSettings={onUpdateProviderSettings}
-              onUpdateProviderSecrets={onUpdateProviderSecrets}
             />
           ) : (
             <>
-              {providerAlertMessage ? (
-                <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-amber-100">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold">You haven&apos;t connected your details</p>
-                      <p className="mt-1 text-sm text-amber-100/80">{providerAlertMessage}</p>
-                    </div>
-                    {selectedProvider.settings.requiresManualConfig ? (
-                      <button
-                        type="button"
-                        className="rounded-lg border border-amber-400/40 bg-amber-400/15 px-3 py-2 text-sm font-medium text-amber-50 transition hover:bg-amber-400/25"
-                        onClick={() => openProviderDialog(selectedProviderId)}
-                      >
-                        Open provider settings
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null}
-
               <section>
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <ProviderLogo providerId={selectedProvider.id} label={selectedProvider.label} large />
-                    <h2 className="text-2xl font-semibold">{selectedProvider.label}</h2>
-                  </div>
-                  {selectedProvider.settings.requiresManualConfig &&
-                  providerDashboard.kind !== "comingSoon" ? (
-                    <button
-                      type="button"
-                      className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 transition hover:border-neutral-500 hover:bg-neutral-800"
-                      onClick={() => openProviderDialog(selectedProviderId)}
-                    >
-                      Configure provider
-                    </button>
-                  ) : null}
+                <div className="mb-2 flex items-center gap-3">
+                  <ProviderLogo providerId="codex" label="Codex" large />
+                  <h2 className="text-2xl font-semibold">Codex</h2>
                 </div>
-                <p className="text-sm text-neutral-400">{providerDashboard.summary}</p>
+                <p className="text-sm text-neutral-400">
+                  Local Codex usage tracking from app-server, rollout logs, and rate-limit snapshots.
+                </p>
               </section>
 
               <section>
-                <h2 className="mb-3 text-2xl font-semibold">
-                  {providerDashboard.kind === "comingSoon" ? "Coming soon" : "Usage"}
-                </h2>
+                <h2 className="mb-3 text-2xl font-semibold">Usage</h2>
                 <ProviderUsagePanel
                   provider={selectedProvider}
                   snapshot={activeSnapshot}
@@ -817,12 +527,11 @@ export default function App() {
                   }
                   secondaryResetAt={weeklyResetAt}
                   displayMode={settings.limitDisplayMode}
-                  loading={providerUsageLoading && selectedProviderUsage == null && selectedProviderId !== "codex"}
+                  loading={false}
                 />
               </section>
 
-              {providerDashboard.showPrediction && selectedProviderId === "codex" ? (
-                <>
+              <>
                   <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
                     <h3 className="text-xl font-semibold">Predicted limit hit</h3>
                     <p className="mt-1 text-sm text-neutral-400">
@@ -983,37 +692,13 @@ export default function App() {
                     summary={modelUsage}
                     heatmap={modelHeatmap}
                     heatmapLoading={modelHeatmapLoading}
+                    settings={settings}
                     range={modelRange}
                     loading={modelUsageLoading}
                     onRangeChange={onModelRangeChange}
+                    onOpenSettings={onOpenSettings}
                   />
-                </>
-              ) : providerDashboard.kind !== "comingSoon" && !providerAlertMessage ? (
-                <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-                  <h3 className="text-lg font-semibold">Provider status</h3>
-                  <p className="mt-2 text-sm text-neutral-300">
-                    Source: {selectedProviderUsage?.source ?? "unknown"}
-                  </p>
-                  {providerUsageLoading ? (
-                    <p className="mt-3 text-sm text-neutral-400">
-                      {selectedProviderUsage ? "Refreshing provider usage..." : "Loading provider usage..."}
-                    </p>
-                  ) : selectedProviderUsage?.error ? (
-                    <p className="mt-3 text-sm text-red-300">{selectedProviderUsage.error}</p>
-                  ) : (
-                    <p className="mt-3 text-sm text-neutral-400">
-                      Provider usage loaded via native collector.
-                    </p>
-                  )}
-                </section>
-              ) : providerDashboard.kind === "comingSoon" ? (
-                <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-                  <h3 className="text-lg font-semibold">Coming soon</h3>
-                  <p className="mt-2 text-sm text-neutral-300">
-                    This provider is listed for roadmap visibility only.
-                  </p>
-                </section>
-              ) : null}
+              </>
             </>
           )}
 
@@ -1024,17 +709,6 @@ export default function App() {
           />
         </div>
 
-        {!showSettings && providerDialogProviderId != null && dialogProvider && dialogProviderConfig ? (
-          <ProviderSettingsDialog
-            provider={dialogProvider}
-            providerConfig={dialogProviderConfig}
-            providerConfigLoading={providerConfigLoading}
-            providerConfigSaving={providerConfigSaving}
-            onClose={closeProviderDialog}
-            onUpdateProviderSettings={onUpdateProviderSettings}
-            onUpdateProviderSecrets={onUpdateProviderSecrets}
-          />
-        ) : null}
       </main>
     </div>
   );
@@ -1129,148 +803,6 @@ function ProviderUsagePanel({
   loading: boolean;
 }) {
   const dashboard = provider.dashboard;
-
-  if (dashboard.kind === "comingSoon") {
-    return (
-      <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-        <p className="text-sm text-neutral-300">Coming soon.</p>
-      </div>
-    );
-  }
-
-  if (dashboard.kind === "balance") {
-    const paidBalance = formatMaybeUsd(getDeepSeekPaidBalance(snapshot?.raw));
-    const grantedBalance = formatMaybeUsd(getDeepSeekGrantedBalance(snapshot?.raw));
-    return (
-      <div className="space-y-3">
-        {loading ? <UsageLoadingBanner label={`${provider.label} usage`} /> : null}
-        <div className="grid gap-4 md:grid-cols-3">
-        <StatCard
-          title={dashboard.balanceLabel ?? "Balance"}
-          value={formatUsd(snapshot?.creditsBalance ?? null)}
-          subtext={dashboard.summary}
-        />
-        <StatCard
-          title="Paid balance"
-          value={paidBalance}
-          subtext={snapshot?.creditsBalance != null ? "From provider balance endpoint" : "Not reported"}
-        />
-        <StatCard
-          title="Granted balance"
-          value={grantedBalance}
-          subtext={snapshot?.planType ?? "Available when reported"}
-        />
-        </div>
-      </div>
-    );
-  }
-
-  if (dashboard.kind === "openrouter") {
-    const keyData = getOpenRouterKeyData(snapshot?.raw);
-    const creditsData = getOpenRouterCreditsData(snapshot?.raw);
-    const activitySummary = getOpenRouterActivitySummary(snapshot?.raw);
-    const activityError = getOpenRouterActivityError(snapshot?.raw);
-    const creditsError = getOpenRouterCreditsError(snapshot?.raw);
-    const resetLabel = keyData?.limit_reset ? formatOpenRouterReset(keyData.limit_reset) : "Not reported";
-    const balanceValue = snapshot?.creditsBalance ?? null;
-    const totalCreditsValue = snapshot?.creditsGranted ?? numberOrNull(creditsData?.total_credits) ?? null;
-    const usageValue = preferNonZero(
-      snapshot?.creditsUsed ?? null,
-      numberOrNull(keyData?.usage),
-      activitySummary.totalUsage,
-    );
-    const balanceNote =
-      creditsError ??
-      (keyData?.is_management_key === false
-        ? "Management key required for wallet balance"
-        : creditsData == null
-          ? "Wallet balance unavailable from current key"
-          : "From OpenRouter credits endpoint");
-    return (
-      <div className="space-y-4">
-        {loading ? <UsageLoadingBanner label="OpenRouter usage" /> : null}
-        <div className="grid gap-4 md:grid-cols-3">
-          <StatCard
-            title={dashboard.balanceLabel ?? "Balance"}
-            value={formatUsdOrMissing(balanceValue)}
-            subtext={keyData?.label ? `Key: ${keyData.label} · ${balanceNote}` : balanceNote}
-          />
-          <StatCard
-            title="Monthly usage"
-            value={formatUsd(
-              preferNonZero(numberOrNull(keyData?.usage_monthly), usageValue, activitySummary.totalUsage),
-            )}
-            subtext={totalCreditsValue != null ? `of ${formatUsd(totalCreditsValue)}` : "From activity and current key"}
-          />
-          <StatCard
-            title="Limit"
-            value={formatUsdOrMissing(totalCreditsValue)}
-            subtext={resetLabel}
-          />
-        </div>
-
-        <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-semibold">Activity (last 30 days)</h3>
-              <p className="mt-1 text-sm text-neutral-400">
-                {activitySummary.totalRequests > 0
-                  ? `${formatCompactNumber(activitySummary.totalRequests)} requests, ${formatCompactNumber(activitySummary.totalPromptTokens)} prompt tokens, ${formatCompactNumber(activitySummary.totalCompletionTokens)} completion tokens`
-                  : "No activity returned yet."}
-              </p>
-            </div>
-            {activityError ? <p className="text-sm text-amber-200">{activityError}</p> : null}
-          </div>
-
-          <div className="mt-4 grid gap-4 md:grid-cols-5">
-            <StatCard title="Requests" value={formatCompactNumber(activitySummary.totalRequests)} subtext="All endpoints" />
-            <StatCard title="Prompt tokens" value={formatCompactNumber(activitySummary.totalPromptTokens)} subtext="Last 30 days" />
-            <StatCard title="Completion tokens" value={formatCompactNumber(activitySummary.totalCompletionTokens)} subtext="Last 30 days" />
-            <StatCard title="Reasoning tokens" value={formatCompactNumber(activitySummary.totalReasoningTokens)} subtext="Last 30 days" />
-            <StatCard title="Usage" value={formatUsd(activitySummary.totalUsage)} subtext="From activity endpoint" />
-          </div>
-
-          <div className="mt-5 overflow-x-auto">
-            <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
-              <thead>
-                <tr className="text-xs uppercase tracking-wide text-neutral-500">
-                  <th className="border-b border-neutral-800 px-3 py-2 font-medium">Model</th>
-                  <th className="border-b border-neutral-800 px-3 py-2 font-medium">Provider</th>
-                  <th className="border-b border-neutral-800 px-3 py-2 font-medium">Requests</th>
-                  <th className="border-b border-neutral-800 px-3 py-2 font-medium">Usage</th>
-                  <th className="border-b border-neutral-800 px-3 py-2 font-medium">Prompt</th>
-                  <th className="border-b border-neutral-800 px-3 py-2 font-medium">Completion</th>
-                  <th className="border-b border-neutral-800 px-3 py-2 font-medium">Reasoning</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activitySummary.rows.length > 0 ? (
-                  activitySummary.rows.map((row) => (
-                    <tr key={row.id} className="text-neutral-200">
-                      <td className="border-b border-neutral-800 px-3 py-2">{row.model}</td>
-                      <td className="border-b border-neutral-800 px-3 py-2 text-neutral-400">{row.provider}</td>
-                      <td className="border-b border-neutral-800 px-3 py-2">{formatCompactNumber(row.requests)}</td>
-                      <td className="border-b border-neutral-800 px-3 py-2">{formatUsd(row.usage)}</td>
-                      <td className="border-b border-neutral-800 px-3 py-2">{formatCompactNumber(row.promptTokens)}</td>
-                      <td className="border-b border-neutral-800 px-3 py-2">{formatCompactNumber(row.completionTokens)}</td>
-                      <td className="border-b border-neutral-800 px-3 py-2">{formatCompactNumber(row.reasoningTokens)}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td className="px-3 py-4 text-neutral-400" colSpan={7}>
-                      No activity rows returned yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
-    );
-  }
-
   const balanceValue =
     snapshot?.creditsBalance != null
       ? formatCredits(snapshot.creditsBalance)
@@ -1289,163 +821,26 @@ function ProviderUsagePanel({
     <div className="space-y-3">
       {loading ? <UsageLoadingBanner label={`${provider.label} usage`} /> : null}
       <div className="grid gap-4 md:grid-cols-3">
-      <LimitCard
-        title={dashboard.primaryLabel}
-        remaining={primaryRemaining}
-        resetAt={primaryResetAt}
-        displayMode={displayMode}
-      />
-      <LimitCard
-        title={dashboard.secondaryLabel ?? "Secondary"}
-        remaining={secondaryRemaining}
-        resetAt={secondaryResetAt}
-        displayMode={displayMode}
-      />
-      <StatCard title={dashboard.balanceLabel ?? "Balance"} value={balanceValue} subtext={balanceSubtext} />
+        <LimitCard
+          title={dashboard.primaryLabel}
+          remaining={primaryRemaining}
+          resetAt={primaryResetAt}
+          displayMode={displayMode}
+        />
+        <LimitCard
+          title={dashboard.secondaryLabel ?? "Secondary"}
+          remaining={secondaryRemaining}
+          resetAt={secondaryResetAt}
+          displayMode={displayMode}
+        />
+        <StatCard
+          title={dashboard.balanceLabel ?? "Balance"}
+          value={balanceValue}
+          subtext={balanceSubtext}
+        />
       </div>
     </div>
   );
-}
-
-function getDeepSeekPaidBalance(raw: unknown): number | null {
-  if (!raw || typeof raw !== "object") {
-    return null;
-  }
-  const candidate = raw as {
-    paidBalance?: number | string;
-    toppedUpBalance?: number | string;
-    total_balance?: number | string;
-    balance_infos?: Array<{
-      topped_up_balance?: number | string;
-    }>;
-  };
-  return (
-    numberOrNull(candidate.paidBalance) ??
-    numberOrNull(candidate.toppedUpBalance) ??
-    numberOrNull(candidate.balance_infos?.[0]?.topped_up_balance) ??
-    null
-  );
-}
-
-function getDeepSeekGrantedBalance(raw: unknown): number | null {
-  if (!raw || typeof raw !== "object") {
-    return null;
-  }
-  const candidate = raw as {
-    grantedBalance?: number | string;
-    granted_balance?: number | string;
-    balance_infos?: Array<{
-      granted_balance?: number | string;
-    }>;
-  };
-  return (
-    numberOrNull(candidate.grantedBalance) ??
-    numberOrNull(candidate.granted_balance) ??
-    numberOrNull(candidate.balance_infos?.[0]?.granted_balance) ??
-    null
-  );
-}
-
-function getOpenRouterKeyData(raw: unknown): OpenRouterKeyData | null {
-  if (!raw || typeof raw !== "object") {
-    return null;
-  }
-  const candidate = raw as { key?: OpenRouterKeyData };
-  return candidate.key ?? null;
-}
-
-function getOpenRouterCreditsData(raw: unknown): OpenRouterCreditsData | null {
-  if (!raw || typeof raw !== "object") {
-    return null;
-  }
-  const candidate = raw as { credits?: OpenRouterCreditsData };
-  return candidate.credits ?? null;
-}
-
-function getOpenRouterActivitySummary(raw: unknown): OpenRouterActivitySummary {
-  const items = getOpenRouterActivityItems(raw);
-  const grouped = new Map<string, OpenRouterActivityRow>();
-
-  let totalRequests = 0;
-  let totalUsage = 0;
-  let totalPromptTokens = 0;
-  let totalCompletionTokens = 0;
-  let totalReasoningTokens = 0;
-
-  for (const item of items) {
-    const requests = numberOrNull(item.requests) ?? 0;
-    const usage = numberOrNull(item.usage) ?? 0;
-    const promptTokens = numberOrNull(item.prompt_tokens) ?? 0;
-    const completionTokens = numberOrNull(item.completion_tokens) ?? 0;
-    const reasoningTokens = numberOrNull(item.reasoning_tokens) ?? 0;
-    const model = item.model_permaslug ?? item.model ?? "Unknown model";
-    const provider = item.provider_name ?? "Unknown provider";
-    const id = `${model}::${provider}`;
-    const existing = grouped.get(id);
-    if (existing) {
-      existing.requests += requests;
-      existing.usage += usage;
-      existing.promptTokens += promptTokens;
-      existing.completionTokens += completionTokens;
-      existing.reasoningTokens += reasoningTokens;
-    } else {
-      grouped.set(id, {
-        id,
-        model,
-        provider,
-        requests,
-        usage,
-        promptTokens,
-        completionTokens,
-        reasoningTokens,
-      });
-    }
-
-    totalRequests += requests;
-    totalUsage += usage;
-    totalPromptTokens += promptTokens;
-    totalCompletionTokens += completionTokens;
-    totalReasoningTokens += reasoningTokens;
-  }
-
-  return {
-    totalRequests,
-    totalUsage,
-    totalPromptTokens,
-    totalCompletionTokens,
-    totalReasoningTokens,
-    rows: [...grouped.values()].sort((left, right) => right.usage - left.usage),
-  };
-}
-
-function getOpenRouterActivityItems(raw: unknown): OpenRouterActivityItem[] {
-  if (!raw || typeof raw !== "object") {
-    return [];
-  }
-  const candidate = raw as { activity?: OpenRouterActivityItem[] };
-  return Array.isArray(candidate.activity) ? candidate.activity : [];
-}
-
-function getOpenRouterActivityError(raw: unknown): string | null {
-  if (!raw || typeof raw !== "object") {
-    return null;
-  }
-  const candidate = raw as { activityError?: string | null };
-  return candidate.activityError ?? null;
-}
-
-function getOpenRouterCreditsError(raw: unknown): string | null {
-  if (!raw || typeof raw !== "object") {
-    return null;
-  }
-  const candidate = raw as { creditsError?: string | null };
-  return candidate.creditsError ?? null;
-}
-
-function formatOpenRouterReset(value: string): string {
-  return value
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function resolveRateLimitPeriodStart(latest: UsageSnapshot | null): number | null {
@@ -1462,8 +857,56 @@ function resolveRateLimitPeriodStart(latest: UsageSnapshot | null): number | nul
   return Math.max(0, latest.checkedAt - (windowMs - remainingMs));
 }
 
-function formatMaybeUsd(value: number | null): string {
-  return value == null ? "Not reported" : formatUsd(value);
+function resolveSubscriptionPeriodStart(renewalDate: string): number | null {
+  const period = resolveSubscriptionPeriod(renewalDate);
+  return period?.start ?? null;
+}
+
+function resolveSubscriptionPeriod(
+  renewalDate: string,
+): { start: number; end: number } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(renewalDate)) {
+    return null;
+  }
+  const [yearText, monthText, dayText] = renewalDate.split("-");
+  const year = Number(yearText);
+  const monthIndex = Number(monthText) - 1;
+  const day = Number(dayText);
+  if (!Number.isFinite(year) || !Number.isFinite(monthIndex) || !Number.isFinite(day)) {
+    return null;
+  }
+
+  const seed = new Date(year, monthIndex, day);
+  seed.setHours(0, 0, 0, 0);
+  if (Number.isNaN(seed.getTime())) {
+    return null;
+  }
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  let currentStart = seed;
+  let nextStart = addMonthsClamped(seed, 1);
+  while (nextStart.getTime() <= now.getTime()) {
+    currentStart = nextStart;
+    nextStart = addMonthsClamped(currentStart, 1);
+  }
+
+  return {
+    start: currentStart.getTime(),
+    end: nextStart.getTime(),
+  };
+}
+
+function addMonthsClamped(date: Date, months: number): Date {
+  const baseYear = date.getFullYear();
+  const baseMonth = date.getMonth() + months;
+  const baseDay = date.getDate();
+  const targetYear = baseYear + Math.floor(baseMonth / 12);
+  const targetMonth = ((baseMonth % 12) + 12) % 12;
+  const maxDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+  const next = new Date(targetYear, targetMonth, Math.min(baseDay, maxDay));
+  next.setHours(0, 0, 0, 0);
+  return next;
 }
 
 function formatCredits(value: number | null | undefined): string {
@@ -1476,32 +919,6 @@ function formatCredits(value: number | null | undefined): string {
   return `${formatted} credits`;
 }
 
-function formatCompactNumber(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) {
-    return "Not reported";
-  }
-  return new Intl.NumberFormat(undefined, {
-    notation: "compact",
-    maximumFractionDigits: 2,
-  }).format(value);
-}
-
-function preferNonZero(...values: Array<number | null | undefined>): number | null {
-  let fallback: number | null = null;
-  for (const value of values) {
-    if (value == null || !Number.isFinite(value)) {
-      continue;
-    }
-    if (value > 0) {
-      return value;
-    }
-    if (fallback == null) {
-      fallback = value;
-    }
-  }
-  return fallback;
-}
-
 function formatResetLabel(value: number): string {
   return new Date(value).toLocaleString([], {
     day: "2-digit",
@@ -1509,140 +926,6 @@ function formatResetLabel(value: number): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function formatUsd(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value) || value <= 0) {
-    return "$0.00";
-  }
-  if (value > 0 && value < 0.01) {
-    return "<$0.01";
-  }
-  if (value < 1) {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 3,
-      maximumFractionDigits: 4,
-    }).format(value);
-  }
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
-
-function formatUsdOrMissing(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) {
-    return "Not reported";
-  }
-  return formatUsd(value);
-}
-
-function numberOrNull(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-  return null;
-}
-
-function getProviderAlertMessage(
-  provider: ProviderCatalogEntry,
-  providerUsage: ProviderUsageResult | null,
-): string | null {
-  const usageMessage = `${providerUsage?.error ?? ""} ${providerUsage?.note ?? ""}`.trim();
-  if (!usageMessage || providerUsage?.snapshot) {
-    return null;
-  }
-
-  if (/missing configuration/i.test(usageMessage)) {
-    return `You haven’t connected your details for ${provider.label}. Open provider settings to add them.`;
-  }
-
-  if (
-    /unable to query|did not include parsable|installed|authenticated|logged in|login|not found|command not found/i.test(
-      usageMessage,
-    )
-  ) {
-    if (provider.id === "gemini" || provider.id === "kiro" || provider.id === "claude") {
-      return `${provider.label} CLI needs attention. Check that it is installed and signed in.`;
-    }
-    return `${provider.label} needs attention. Check your provider settings or local auth.`;
-  }
-
-  return provider.settings.requiresManualConfig ? `${provider.label} needs attention. Check your provider settings.` : null;
-}
-
-function ProviderSettingsDialog({
-  provider,
-  providerConfig,
-  providerConfigLoading,
-  providerConfigSaving,
-  onClose,
-  onUpdateProviderSettings,
-  onUpdateProviderSecrets,
-}: {
-  provider: ProviderCatalogEntry;
-  providerConfig: ProviderConfigurationView;
-  providerConfigLoading: boolean;
-  providerConfigSaving: boolean;
-  onClose: () => void;
-  onUpdateProviderSettings: (partial: Partial<ProviderConnectionSettings>) => Promise<void>;
-  onUpdateProviderSecrets: (partial: ProviderSecretInput) => Promise<void>;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-      onClick={onClose}
-      role="presentation"
-    >
-      <div
-        className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={`${provider.label} settings`}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-xl font-semibold">{provider.label} settings</h3>
-            <p className="mt-1 text-sm text-neutral-400">{provider.settings.hint}</p>
-          </div>
-          <button
-            type="button"
-            className="rounded-lg border border-neutral-700 bg-neutral-900 p-2 text-neutral-200 transition hover:border-neutral-500 hover:bg-neutral-800"
-            onClick={onClose}
-            aria-label="Close provider settings"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        {providerConfigLoading ? (
-          <p className="mt-3 text-sm text-neutral-400">Syncing provider settings...</p>
-        ) : null}
-        <div className="mt-4">
-          <ProviderConfigForm
-            provider={provider}
-            config={providerConfig}
-            saving={providerConfigSaving}
-            onUpdateProviderSettings={onUpdateProviderSettings}
-            onUpdateProviderSecrets={onUpdateProviderSecrets}
-            onClearProviderSecret={async (field) => {
-              await onUpdateProviderSecrets({ [field]: "" });
-            }}
-          />
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function ProviderLogo({
@@ -2253,30 +1536,4 @@ function formatLeadTime(
     return `About ${days}d ${hours}h before your limit resets`;
   }
   return `About ${hours}h before your limit resets`;
-}
-
-function buildLocalProviderConfig(
-  providerId: ProviderId,
-  settings: AppSettings,
-  secretFlags?: ProviderSecretFlags,
-): ProviderConfigurationView {
-  return {
-    providerId,
-    settings: settings.providerSettings[providerId] ?? {
-      enabled: true,
-      mode: "auto",
-      apiBaseUrl: "",
-      cliPath: "",
-      accountId: "",
-      workspacePath: "",
-      headersJson: "",
-      notes: "",
-    },
-    secretFlags: secretFlags ?? {
-      hasApiKey: false,
-      hasBearerToken: false,
-      hasRefreshToken: false,
-      hasSessionCookie: false,
-    },
-  };
 }
