@@ -51,3 +51,13 @@ export function formatBurnRate(value: number | null | undefined): string {
   }
   return `-${value.toFixed(1)}% remaining / hour`;
 }
+
+export function formatEvenPaceGap(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) {
+    return "Need more data";
+  }
+  if (Math.abs(value) < 0.05) {
+    return "On pace";
+  }
+  return `${Math.abs(value).toFixed(1)}% ${value > 0 ? "ahead" : "behind"}`;
+}
