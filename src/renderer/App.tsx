@@ -19,6 +19,7 @@ import {
   formatBurnRate,
   formatDate,
   formatDateTime,
+  formatEvenPaceGap,
   formatTime,
 } from "./lib/format";
 import { codexPulseApi } from "./lib/ipc";
@@ -75,6 +76,7 @@ type PredictionTimelinePoint = {
   checkedAt: number;
   usedActual: number | null;
   usedProjected: number | null;
+  usedEvenPace: number | null;
 };
 
 type PredictionTimeline = {
@@ -83,6 +85,8 @@ type PredictionTimeline = {
   hitAt: number | null;
   hitState: "hit" | "no_hit_before_reset" | "insufficient_data";
   usedNow: number | null;
+  evenPaceUsedNow: number | null;
+  evenPaceGap: number | null;
   projectedRate: number | null;
   points: PredictionTimelinePoint[];
 };
@@ -405,6 +409,7 @@ export default function App() {
     predictionTimeline.hitAt,
     predictionTimeline.resetAt,
   );
+  const evenPaceGapText = formatEvenPaceGap(predictionTimeline.evenPaceGap);
 
   return (
     <div className="min-h-screen bg-black text-neutral-100">
@@ -537,7 +542,7 @@ export default function App() {
                     <p className="mt-1 text-sm text-neutral-400">
                       At your current usage rate, you&apos;ll hit your weekly limit
                     </p>
-                    <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                    <div className="mt-4 grid gap-4 sm:grid-cols-4">
                       <div>
                         <p className="text-xs uppercase tracking-wide text-neutral-500">Estimated hit</p>
                         <p className="mt-1 text-3xl font-semibold">{estimatedTimeText}</p>
@@ -556,6 +561,10 @@ export default function App() {
                             predictionTimeline.hitState,
                           )}
                         </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-neutral-500">Even pace gap</p>
+                        <p className="mt-1 text-sm text-neutral-300">{evenPaceGapText}</p>
                       </div>
                     </div>
                     <div className="mt-4">
@@ -626,6 +635,17 @@ export default function App() {
                             />
                             <Area
                               type="linear"
+                              dataKey="usedEvenPace"
+                              stroke="#ef4444"
+                              strokeDasharray="4 4"
+                              fill="transparent"
+                              fillOpacity={0}
+                              strokeWidth={2}
+                              connectNulls
+                              name="Even pace to 100%"
+                            />
+                            <Area
+                              type="linear"
                               dataKey="usedProjected"
                               stroke="#c4b5fd"
                               strokeDasharray="5 4"
@@ -638,6 +658,9 @@ export default function App() {
                           </AreaChart>
                         </ResponsiveContainer>
                       </div>
+                      <p className="mt-2 text-xs text-neutral-500">
+                        Red dashed line shows the even pace needed to use 100% exactly at reset.
+                      </p>
                       <div className="relative mt-2 min-h-[3rem] text-xs text-neutral-400">
                         <div className="flex items-start justify-between">
                           <div>
@@ -1067,6 +1090,8 @@ function buildPredictionTimeline(params: {
       hitAt: null,
       hitState: "insufficient_data",
       usedNow: null,
+      evenPaceUsedNow: null,
+      evenPaceGap: null,
       projectedRate: null,
       points: [],
     };
@@ -1075,6 +1100,8 @@ function buildPredictionTimeline(params: {
   const usedNow = clampPct(latest.secondaryUsedPercent);
   const periodMinutes = latest.secondaryWindowMinutes ?? 7 * 24 * 60;
   const periodStart = weeklyResetAt - periodMinutes * 60 * 1000;
+  const evenPaceUsedNow = calculateEvenPaceUsed(latest.checkedAt, periodStart, weeklyResetAt);
+  const evenPaceGap = usedNow - evenPaceUsedNow;
 
   const observed = history
     .filter(
@@ -1093,10 +1120,11 @@ function buildPredictionTimeline(params: {
         checkedAt,
         usedActual: usedActual ?? existing.usedActual,
         usedProjected: usedProjected ?? existing.usedProjected,
+        usedEvenPace: existing.usedEvenPace,
       });
       return;
     }
-    map.set(checkedAt, { checkedAt, usedActual, usedProjected });
+    map.set(checkedAt, { checkedAt, usedActual, usedProjected, usedEvenPace: null });
   };
 
   // Assume the weekly period started near 0% when early telemetry is sparse.
@@ -1164,8 +1192,15 @@ function buildPredictionTimeline(params: {
     hitAt,
     hitState,
     usedNow,
+    evenPaceUsedNow,
+    evenPaceGap,
     projectedRate,
-    points: [...map.values()].sort((a, b) => a.checkedAt - b.checkedAt),
+    points: [...map.values()]
+      .sort((a, b) => a.checkedAt - b.checkedAt)
+      .map((point) => ({
+        ...point,
+        usedEvenPace: calculateEvenPaceUsed(point.checkedAt, periodStart, weeklyResetAt),
+      })),
   };
 }
 
@@ -1475,6 +1510,18 @@ function clampPct(value: number): number {
 
 function clampMin(value: number, min: number): number {
   return Math.max(min, value);
+}
+
+function calculateEvenPaceUsed(
+  checkedAt: number,
+  periodStart: number,
+  resetAt: number,
+): number {
+  if (resetAt <= periodStart) {
+    return 0;
+  }
+  const elapsedRatio = (checkedAt - periodStart) / (resetAt - periodStart);
+  return clampPct(elapsedRatio * 100);
 }
 
 function addProjectedCurve(params: {
