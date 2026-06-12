@@ -65,7 +65,11 @@ const FALLBACK_MODEL_PRICING: ModelPricing = {
   outputUsdPer1M: 15,
 };
 
-// Rough defaults aligned to current OpenAI API pricing bands.
+// Rough defaults aligned to current OpenAI API pricing bands as of 2026-06-12.
+// Sources:
+// - https://developers.openai.com/api/docs/pricing
+// - https://developers.openai.com/api/docs/models/gpt-5.2-codex
+// - https://developers.openai.com/api/docs/models/gpt-5.3-codex
 const MODEL_PRICING: Array<{ prefix: string; pricing: ModelPricing }> = [
   {
     prefix: "gpt-5.5",
@@ -85,11 +89,15 @@ const MODEL_PRICING: Array<{ prefix: string; pricing: ModelPricing }> = [
   },
   {
     prefix: "gpt-5.3-codex",
-    pricing: { inputUsdPer1M: 2.5, cachedInputUsdPer1M: 0.25, outputUsdPer1M: 15 },
+    pricing: { inputUsdPer1M: 1.75, cachedInputUsdPer1M: 0.175, outputUsdPer1M: 14 },
+  },
+  {
+    prefix: "gpt-5.2-codex",
+    pricing: { inputUsdPer1M: 1.75, cachedInputUsdPer1M: 0.175, outputUsdPer1M: 14 },
   },
   {
     prefix: "gpt-5.2",
-    pricing: { inputUsdPer1M: 2.5, cachedInputUsdPer1M: 0.25, outputUsdPer1M: 15 },
+    pricing: { inputUsdPer1M: 1.75, cachedInputUsdPer1M: 0.175, outputUsdPer1M: 14 },
   },
 ];
 
@@ -759,8 +767,11 @@ function normalizeModelName(value: unknown): string {
 
 function estimateCostUsd(model: string, usage: TokenTotals): number {
   const pricing = resolveModelPricing(model);
-  const inputCost = (usage.inputTokens / 1_000_000) * pricing.inputUsdPer1M;
-  const cachedInputCost = (usage.cachedInputTokens / 1_000_000) * pricing.cachedInputUsdPer1M;
+  // Cached input tokens are a discounted subset of input tokens, not an extra bucket.
+  const cachedInputTokens = Math.min(usage.cachedInputTokens, usage.inputTokens);
+  const uncachedInputTokens = Math.max(0, usage.inputTokens - cachedInputTokens);
+  const inputCost = (uncachedInputTokens / 1_000_000) * pricing.inputUsdPer1M;
+  const cachedInputCost = (cachedInputTokens / 1_000_000) * pricing.cachedInputUsdPer1M;
   const outputCost = (usage.outputTokens / 1_000_000) * pricing.outputUsdPer1M;
   const estimated = inputCost + cachedInputCost + outputCost;
   if (!Number.isFinite(estimated) || estimated <= 0) {

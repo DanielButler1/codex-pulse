@@ -66,7 +66,7 @@ export function ModelUsageTable({
     return sorted.slice(0, 10).map((model) => ({
       model: model.model,
       requests: model.requests,
-      inputTokens: model.inputTokens,
+      uncachedInputTokens: Math.max(0, model.inputTokens - model.cachedInputTokens),
       cachedInputTokens: model.cachedInputTokens,
       outputTokens: model.outputTokens,
       totalTokens: model.totalTokens,
@@ -213,10 +213,10 @@ export function ModelUsageTable({
         <Metric label="Requests" value={formatInt(summary?.totals.requests)} />
         <Metric label="Input tokens" value={formatInt(summary?.totals.inputTokens)} />
         <Metric label="Output tokens" value={formatInt(summary?.totals.outputTokens)} />
-        <Metric label="Cached input" value={formatInt(summary?.totals.cachedInputTokens)} />
-        <Metric label="Reasoning output" value={formatInt(summary?.totals.reasoningOutputTokens)} />
+        <Metric label="Cached input (subset)" value={formatInt(summary?.totals.cachedInputTokens)} />
+        <Metric label="Reasoning output (subset)" value={formatInt(summary?.totals.reasoningOutputTokens)} />
         <Metric label="Total tokens" value={formatInt(summary?.totals.totalTokens)} />
-        <Metric label="Est. cost" value={formatUsd(summary?.totals.estimatedCostUsd)} />
+        <Metric label="Est. API cost" value={formatUsd(summary?.totals.estimatedCostUsd)} />
       </div>
 
       {loading ? (
@@ -309,10 +309,10 @@ export function ModelUsageTable({
                 ) : (
                   <>
                     <Bar
-                      dataKey="inputTokens"
+                      dataKey="uncachedInputTokens"
                       stackId="tokens"
                       fill="#ef4444"
-                      name="Input"
+                      name="Input (uncached)"
                       radius={[0, 0, 0, 0]}
                     />
                     <Bar
@@ -346,11 +346,11 @@ export function ModelUsageTable({
                   <th className="px-2 py-2">Model</th>
                   <th className="px-2 py-2">Requests</th>
                   <th className="px-2 py-2">Input</th>
-                  <th className="px-2 py-2">Cached input</th>
+                  <th className="px-2 py-2">Cached input subset</th>
                   <th className="px-2 py-2">Output</th>
-                  <th className="px-2 py-2">Reasoning</th>
+                  <th className="px-2 py-2">Reasoning subset</th>
                   <th className="px-2 py-2">Total</th>
-                  <th className="px-2 py-2">Est. cost</th>
+                  <th className="px-2 py-2">Est. API cost</th>
                 </tr>
               </thead>
               <tbody>
@@ -482,7 +482,7 @@ export function ModelUsageTable({
                       strokeWidth={2}
                       dot={{ r: 2 }}
                       connectNulls={false}
-                      name={timelineMetric === "cost" ? "Estimated cost" : "Total tokens"}
+                      name={timelineMetric === "cost" ? "Estimated API cost" : "Total tokens"}
                     />
                   </LineChart>
 	                </ResponsiveContainer>
@@ -499,7 +499,7 @@ export function ModelUsageTable({
                     </p>
                   </div>
                   <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
-                    <p className="text-xs uppercase tracking-wide text-neutral-500">Projected month cost</p>
+                    <p className="text-xs uppercase tracking-wide text-neutral-500">Projected month API cost</p>
                     <p className="mt-1 text-lg font-semibold text-neutral-100">
                       {formatUsd(monthProjection.projectedCostUsd)}
                     </p>
@@ -511,7 +511,7 @@ export function ModelUsageTable({
                 {range === "sub_period" ? (
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
-                      <p className="text-xs uppercase tracking-wide text-neutral-500">Sub period value</p>
+                      <p className="text-xs uppercase tracking-wide text-neutral-500">Sub period API value</p>
                       <p className="mt-1 text-lg font-semibold text-neutral-100">
                         {formatUsd(summary.totals.estimatedCostUsd)}
                       </p>
