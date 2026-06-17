@@ -11,7 +11,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Download, RefreshCw, Settings2 } from "lucide-react";
+import { AlertTriangle, Download, RefreshCw, Settings2 } from "lucide-react";
 import { ModelUsageTable } from "./components/ModelUsageTable";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { StatusBar } from "./components/StatusBar";
@@ -89,6 +89,11 @@ type PredictionTimeline = {
   evenPaceGap: number | null;
   projectedRate: number | null;
   points: PredictionTimelinePoint[];
+};
+
+type FiveHourLimitWarning = {
+  hitAt: number;
+  usedPercent: number;
 };
 
 export default function App() {
@@ -376,6 +381,14 @@ export default function App() {
     activeSnapshot?.checkedAt != null && secondaryResetLive != null
       ? activeSnapshot.checkedAt + secondaryResetLive * 1000
       : null;
+  const primaryResetAt =
+    primaryResetLive != null && activeSnapshot?.checkedAt != null
+      ? activeSnapshot.checkedAt + primaryResetLive * 1000
+      : null;
+  const fiveHourLimitWarning = useMemo(
+    () => buildFiveHourLimitWarning(activeSnapshot, primaryResetAt),
+    [activeSnapshot, primaryResetAt],
+  );
   const effectiveBurnRate = useMemo(
     () => resolveBurnRate(latest, status?.burnRatePercentPerHour ?? null),
     [latest, status?.burnRatePercentPerHour],
@@ -525,12 +538,9 @@ export default function App() {
                   snapshot={activeSnapshot}
                   primaryRemaining={primaryRemaining}
                   secondaryRemaining={secondaryRemaining}
-                  primaryResetAt={
-                    primaryResetLive != null && activeSnapshot?.checkedAt != null
-                      ? activeSnapshot.checkedAt + primaryResetLive * 1000
-                      : null
-                  }
+                  primaryResetAt={primaryResetAt}
                   secondaryResetAt={weeklyResetAt}
+                  fiveHourLimitWarning={fiveHourLimitWarning}
                   displayMode={settings.limitDisplayMode}
                   loading={false}
                 />
@@ -741,11 +751,13 @@ function LimitCard({
   title,
   remaining,
   resetAt,
+  warning,
   displayMode,
 }: {
   title: string;
   remaining: number | null;
   resetAt: number | null;
+  warning?: FiveHourLimitWarning | null;
   displayMode: AppSettings["limitDisplayMode"];
 }) {
   const used = remaining == null ? null : Math.max(0, 100 - remaining);
@@ -754,9 +766,23 @@ function LimitCard({
   const remainingClamped = remaining != null ? Math.max(0, Math.min(100, remaining)) : null;
   const usedClamped = used != null ? Math.max(0, Math.min(100, used)) : null;
   const progressWidth = displayMode === "used" ? usedClamped : remainingClamped;
+  const warningText =
+    warning == null
+      ? null
+      : warning.usedPercent >= 100
+        ? `Hit at ${formatTime(warning.hitAt)}`
+        : `Hits at ${formatTime(warning.hitAt)}`;
   return (
     <article className="h-full rounded-3xl border border-neutral-800 bg-neutral-900 p-5">
-      <p className="text-sm font-medium text-neutral-300">{title}</p>
+      <div className="flex min-h-5 items-start justify-between gap-3">
+        <p className="text-sm font-medium text-neutral-300">{title}</p>
+        {warning && warningText ? (
+          <div className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-amber-300/90">
+            <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>{warningText}</span>
+          </div>
+        ) : null}
+      </div>
       <p className="mt-2 text-4xl font-semibold leading-none">
         {displayPercent != null ? `${displayPercent.toFixed(0)}%` : "--"}
         <span className="ml-2 text-2xl font-normal text-neutral-300">{displayLabel}</span>
@@ -813,6 +839,7 @@ function ProviderUsagePanel({
   secondaryRemaining,
   primaryResetAt,
   secondaryResetAt,
+  fiveHourLimitWarning,
   displayMode,
   loading,
 }: {
@@ -822,6 +849,7 @@ function ProviderUsagePanel({
   secondaryRemaining: number | null;
   primaryResetAt: number | null;
   secondaryResetAt: number | null;
+  fiveHourLimitWarning: FiveHourLimitWarning | null;
   displayMode: AppSettings["limitDisplayMode"];
   loading: boolean;
 }) {
@@ -848,6 +876,7 @@ function ProviderUsagePanel({
           title={dashboard.primaryLabel}
           remaining={primaryRemaining}
           resetAt={primaryResetAt}
+          warning={fiveHourLimitWarning}
           displayMode={displayMode}
         />
         <LimitCard
@@ -949,6 +978,46 @@ function formatResetLabel(value: number): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function buildFiveHourLimitWarning(
+  snapshot: UsageSnapshot | null,
+  resetAt: number | null,
+): FiveHourLimitWarning | null {
+  if (!snapshot || resetAt == null || snapshot.primaryUsedPercent == null || snapshot.checkedAt == null) {
+    return null;
+  }
+
+  const windowMinutes = snapshot.primaryWindowMinutes ?? 5 * 60;
+  if (Math.abs(windowMinutes - 5 * 60) > 5 || resetAt <= snapshot.checkedAt) {
+    return null;
+  }
+
+  const usedPercent = clampPct(snapshot.primaryUsedPercent);
+  if (usedPercent <= 0) {
+    return null;
+  }
+
+  const windowStart = resetAt - windowMinutes * 60 * 1000;
+  const elapsedHours = Math.max((snapshot.checkedAt - windowStart) / (1000 * 60 * 60), 1 / 60);
+  const projectedRate = usedPercent / elapsedHours;
+  if (!Number.isFinite(projectedRate) || projectedRate <= 0) {
+    return null;
+  }
+
+  const hitAt =
+    usedPercent >= 100
+      ? snapshot.checkedAt
+      : snapshot.checkedAt + ((100 - usedPercent) / projectedRate) * 60 * 60 * 1000;
+
+  if (hitAt >= resetAt) {
+    return null;
+  }
+
+  return {
+    hitAt,
+    usedPercent,
+  };
 }
 
 function ProviderLogo({
