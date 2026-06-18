@@ -46,6 +46,10 @@ export class AppUpdaterService {
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = false;
     autoUpdater.channel = "beta";
+    // Packaged Windows launches can have stdout/stderr detached, and electron-updater
+    // defaults to the global console logger. Disable that logger so update checks
+    // cannot throw EPIPE while emitting internal progress lines.
+    autoUpdater.logger = null;
 
     autoUpdater.on("checking-for-update", () => {
       this.setState({
