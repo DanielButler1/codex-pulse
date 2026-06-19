@@ -22,6 +22,24 @@ export type UsageSnapshot = {
   raw?: unknown;
 };
 
+export type CodexResetCredit = {
+  id: string;
+  resetType: string | null;
+  status: string;
+  grantedAt: number | null;
+  expiresAt: number | null;
+  title: string | null;
+  description: string | null;
+};
+
+export type CodexResetCreditsResult = {
+  checkedAt: number;
+  credits: CodexResetCredit[];
+  availableCount: number;
+  totalEarnedCount: number | null;
+  error: string | null;
+};
+
 export type HistoryRange = "1h" | "6h" | "24h" | "7d" | "30d";
 export type ModelUsageRange = HistoryRange | "period" | "sub_period" | "all";
 export type SubscriptionPlan = "free" | "go" | "plus" | "pro_5x" | "pro_20x";

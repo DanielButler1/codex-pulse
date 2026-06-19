@@ -33,6 +33,7 @@ import type {
   AppSettings,
   AppStatus,
   AppUpdateState,
+  CodexResetCreditsResult,
   ModelUsageHeatmapData,
   ModelUsageRange,
   ModelUsageSummary,
@@ -104,16 +105,18 @@ export default function App() {
   const [history, setHistory] = useState<UsageSnapshot[]>([]);
   const [modelUsage, setModelUsage] = useState<ModelUsageSummary | null>(null);
   const [modelHeatmap, setModelHeatmap] = useState<ModelUsageHeatmapData | null>(null);
+  const [resetCredits, setResetCredits] = useState<CodexResetCreditsResult | null>(null);
   const [modelHeatmapLoading, setModelHeatmapLoading] = useState(false);
+  const [resetCreditsLoading, setResetCreditsLoading] = useState(false);
   const [latest, setLatest] = useState<UsageSnapshot | null>(null);
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [modelUsageLoading, setModelUsageLoading] = useState(false);
   const [updateState, setUpdateState] = useState<AppUpdateState | null>(null);
-  const [nowMs, setNowMs] = useState(() => Date.now());
   const lastModelUsageLoadAtRef = useRef(0);
   const modelUsageReferenceRef = useRef<UsageSnapshot | null>(null);
+  const resetCreditsRef = useRef<CodexResetCreditsResult | null>(null);
 
   useEffect(() => {
     modelUsageReferenceRef.current = latest ?? history[history.length - 1] ?? null;
@@ -145,6 +148,33 @@ export default function App() {
   const loadUpdateState = useCallback(async () => {
     const state = await codexPulseApi.getUpdateState();
     setUpdateState(state);
+  }, []);
+
+  const loadResetCredits = useCallback(async (forceRefresh = false) => {
+    const shouldShowLoading = forceRefresh || resetCreditsRef.current == null;
+    if (shouldShowLoading) {
+      setResetCreditsLoading(true);
+    }
+    try {
+      const credits = await codexPulseApi.getCodexResetCredits(forceRefresh);
+      resetCreditsRef.current = credits;
+      setResetCredits(credits);
+    } catch (error) {
+      console.error("Failed to load Codex reset credits", error);
+      const failedResult: CodexResetCreditsResult = {
+        checkedAt: Date.now(),
+        credits: [],
+        availableCount: 0,
+        totalEarnedCount: null,
+        error: "Reset credits could not be loaded.",
+      };
+      resetCreditsRef.current = failedResult;
+      setResetCredits(failedResult);
+    } finally {
+      if (shouldShowLoading) {
+        setResetCreditsLoading(false);
+      }
+    }
   }, []);
 
   const loadModelUsage = useCallback(async (range: ModelUsageRange, referenceUsage: UsageSnapshot | null = modelUsageReferenceRef.current) => {
@@ -193,10 +223,10 @@ export default function App() {
 
   useEffect(() => {
     setLoading(true);
-    void Promise.allSettled([load(), loadSettings(), loadUpdateState()]).finally(() =>
+    void Promise.allSettled([load(), loadSettings(), loadUpdateState(), loadResetCredits()]).finally(() =>
       setLoading(false),
     );
-  }, [load, loadSettings, loadUpdateState]);
+  }, [load, loadResetCredits, loadSettings, loadUpdateState]);
 
   useEffect(() => {
     if (modelRange === "period") {
@@ -248,16 +278,16 @@ export default function App() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setNowMs(Date.now());
       void load();
       void loadSettings();
       void loadUpdateState();
+      void loadResetCredits();
     }, 15_000);
     const unsubscribe = codexPulseApi.subscribe(() => {
-      setNowMs(Date.now());
       void load();
       void loadSettings();
       void loadUpdateState();
+      void loadResetCredits();
       if (Date.now() - lastModelUsageLoadAtRef.current >= MODEL_USAGE_BACKGROUND_REFRESH_MS) {
         void loadModelUsage(modelRange);
       }
@@ -269,6 +299,7 @@ export default function App() {
   }, [
     load,
     loadModelUsage,
+    loadResetCredits,
     loadSettings,
     loadUpdateState,
     modelRange,
@@ -314,11 +345,12 @@ export default function App() {
     const latestUsage = await load();
     await Promise.all([
       loadModelHeatmap(),
+      loadResetCredits(true),
       modelRange === "period"
         ? loadModelUsage("period", latestUsage ?? modelUsageReferenceRef.current)
         : loadModelUsage(modelRange),
     ]);
-  }, [load, loadModelHeatmap, loadModelUsage, modelRange]);
+  }, [load, loadModelHeatmap, loadModelUsage, loadResetCredits, modelRange]);
 
   const onModelRangeChange = useCallback(
     (range: ModelUsageRange) => {
@@ -362,28 +394,17 @@ export default function App() {
   const activeSnapshot = latest;
   const activeAuthMessage = authMessage;
 
-  const primaryResetLive = calculateLiveResetSeconds(
-    activeSnapshot?.primaryResetAfterSeconds,
-    activeSnapshot?.checkedAt,
-    nowMs,
-  );
-  const secondaryResetLive = calculateLiveResetSeconds(
-    activeSnapshot?.secondaryResetAfterSeconds,
-    activeSnapshot?.checkedAt,
-    nowMs,
-  );
-
   const primaryRemaining =
     activeSnapshot?.primaryUsedPercent == null ? null : Math.max(0, 100 - activeSnapshot.primaryUsedPercent);
   const secondaryRemaining =
     activeSnapshot?.secondaryUsedPercent == null ? null : Math.max(0, 100 - activeSnapshot.secondaryUsedPercent);
   const weeklyResetAt =
-    activeSnapshot?.checkedAt != null && secondaryResetLive != null
-      ? activeSnapshot.checkedAt + secondaryResetLive * 1000
+    activeSnapshot?.checkedAt != null && activeSnapshot.secondaryResetAfterSeconds != null
+      ? activeSnapshot.checkedAt + activeSnapshot.secondaryResetAfterSeconds * 1000
       : null;
   const primaryResetAt =
-    primaryResetLive != null && activeSnapshot?.checkedAt != null
-      ? activeSnapshot.checkedAt + primaryResetLive * 1000
+    activeSnapshot?.checkedAt != null && activeSnapshot.primaryResetAfterSeconds != null
+      ? activeSnapshot.checkedAt + activeSnapshot.primaryResetAfterSeconds * 1000
       : null;
   const fiveHourLimitWarning = useMemo(
     () => buildFiveHourLimitWarning(activeSnapshot, primaryResetAt),
@@ -731,6 +752,11 @@ export default function App() {
                     onRangeChange={onModelRangeChange}
                     onOpenSettings={onOpenSettings}
                   />
+
+                  <ResetCreditsSection
+                    resetCredits={resetCredits}
+                    loading={resetCreditsLoading}
+                  />
               </>
             </>
           )}
@@ -895,6 +921,93 @@ function ProviderUsagePanel({
   );
 }
 
+function ResetCreditsSection({
+  resetCredits,
+  loading,
+}: {
+  resetCredits: CodexResetCreditsResult | null;
+  loading: boolean;
+}) {
+  const availableCredits =
+    resetCredits?.credits.filter((credit) => credit.status === "available") ?? [];
+  const visibleCount = resetCredits?.availableCount ?? availableCredits.length;
+  const countLabel = `${visibleCount} ${visibleCount === 1 ? "reset" : "resets"} available`;
+
+  return (
+    <section className="space-y-3 pb-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h3 className="text-xl font-semibold">Resets</h3>
+          <p className="mt-1 text-sm text-neutral-400">
+            {loading && !resetCredits ? "Loading reset credits..." : countLabel}
+          </p>
+        </div>
+        {resetCredits?.checkedAt ? (
+          <p className="text-xs text-neutral-500">Checked {formatDateTime(resetCredits.checkedAt)}</p>
+        ) : null}
+      </div>
+
+      {resetCredits?.error ? (
+        <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-sm text-amber-100">
+          {resetCredits.error}
+        </div>
+      ) : availableCredits.length > 0 ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {availableCredits.map((credit, index) => (
+            <ResetCreditCard
+              key={credit.id}
+              credit={credit}
+              index={index}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-neutral-800 bg-neutral-950/70 p-4 text-sm text-neutral-400">
+          No available reset credits reported.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ResetCreditCard({
+  credit,
+  index,
+}: {
+  credit: CodexResetCreditsResult["credits"][number];
+  index: number;
+}) {
+  return (
+    <article className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            Reset {index + 1}
+          </p>
+          <p className="mt-1 text-sm font-medium text-neutral-200">
+            {credit.title ?? "Rate limit reset"}
+          </p>
+        </div>
+        <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-200">
+          Available
+        </span>
+      </div>
+      <dl className="mt-4 grid gap-3 text-sm">
+        <div>
+          <dt className="text-xs uppercase tracking-wide text-neutral-500">Expires</dt>
+          <dd className="mt-1 font-semibold text-neutral-100">
+            {formatResetCreditDateTime(credit.expiresAt)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs uppercase tracking-wide text-neutral-500">Granted</dt>
+          <dd className="mt-1 text-neutral-300">{formatResetCreditDateTime(credit.grantedAt)}</dd>
+        </div>
+      </dl>
+    </article>
+  );
+}
+
 function resolveRateLimitPeriodStart(latest: UsageSnapshot | null): number | null {
   if (!latest) {
     return null;
@@ -975,6 +1088,19 @@ function formatResetLabel(value: number): string {
   return new Date(value).toLocaleString([], {
     day: "2-digit",
     month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatResetCreditDateTime(value: number | null): string {
+  if (value == null) {
+    return "Not reported";
+  }
+  return new Date(value).toLocaleString([], {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -1516,18 +1642,6 @@ function estimateHitAt(
   }
   const hours = remaining / ratePercentPerHour;
   return startAt + hours * 60 * 60 * 1000;
-}
-
-function calculateLiveResetSeconds(
-  resetAfterSeconds: number | null | undefined,
-  checkedAt: number | null | undefined,
-  nowMs: number,
-): number | null {
-  if (resetAfterSeconds == null || checkedAt == null) {
-    return null;
-  }
-  const elapsed = Math.floor((nowMs - checkedAt) / 1000);
-  return Math.max(0, resetAfterSeconds - Math.max(0, elapsed));
 }
 
 function buildWeeklyWindowOptions(

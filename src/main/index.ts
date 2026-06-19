@@ -11,6 +11,7 @@ import type {
   AppSettings,
   AppStatus,
   AppUpdateState,
+  CodexResetCreditsResult,
   HistoryRange,
   ModelUsageRange,
   ProviderConfigurationUpdate,
@@ -25,6 +26,7 @@ import { fetchProviderUsageNative } from "./services/provider-usage";
 import { ProviderSecretsStore } from "./services/provider-secrets";
 import { getAllTimeModelUsageHeatmap, getModelUsageSummary } from "./services/model-usage";
 import { CodexUsageService } from "./services/codex-usage";
+import { fetchCodexResetCredits } from "./services/codex-reset-credits";
 import { UsageScheduler } from "./services/scheduler";
 import { AppUpdaterService } from "./services/updater";
 import { TrayController } from "./tray";
@@ -46,6 +48,9 @@ let latestUpdateState: AppUpdateState | null = null;
 let shouldShowWindowOnReady = true;
 const providerUsageCache = new Map<string, { result: ProviderUsageResult; cachedAt: number }>();
 const providerUsageInflight = new Map<string, Promise<ProviderUsageResult>>();
+let resetCreditsCache: { result: CodexResetCreditsResult; cachedAt: number } | null = null;
+let resetCreditsInflight: Promise<CodexResetCreditsResult> | null = null;
+const RESET_CREDITS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const FALLBACK_PROVIDER_SETTINGS: ProviderConnectionSettings = {
   enabled: true,
@@ -199,6 +204,11 @@ function registerIpc() {
     await getAllTimeModelUsageHeatmap(),
   );
   ipcMain.handle(
+    "codexPulse:getCodexResetCredits",
+    async (_event, forceRefresh?: boolean): Promise<CodexResetCreditsResult> =>
+      getCodexResetCredits(Boolean(forceRefresh)),
+  );
+  ipcMain.handle(
     "codexPulse:getProviderUsage",
     async (_event, providerId: string): Promise<ProviderUsageResult> => {
       if (providerId === "codex") {
@@ -334,6 +344,26 @@ function refreshProviderUsage(
   });
   providerUsageInflight.set(providerId, request);
   return request;
+}
+
+function getCodexResetCredits(forceRefresh: boolean): Promise<CodexResetCreditsResult> {
+  if (
+    !forceRefresh &&
+    resetCreditsCache &&
+    Date.now() - resetCreditsCache.cachedAt < RESET_CREDITS_CACHE_TTL_MS
+  ) {
+    return Promise.resolve(resetCreditsCache.result);
+  }
+  if (resetCreditsInflight) {
+    return resetCreditsInflight;
+  }
+
+  resetCreditsInflight = fetchCodexResetCredits().then((result) => {
+    resetCreditsCache = result.error ? null : { result, cachedAt: Date.now() };
+    resetCreditsInflight = null;
+    return result;
+  });
+  return resetCreditsInflight;
 }
 
 function buildProviderConfigView(providerId: string): ProviderConfigurationView {

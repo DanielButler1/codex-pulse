@@ -2,6 +2,7 @@ import type {
   AppSettings,
   AppStatus,
   AppUpdateState,
+  CodexResetCreditsResult,
   HistoryRange,
   ModelUsageHeatmapData,
   ModelUsageRange,
@@ -20,6 +21,8 @@ export const codexPulseApi = {
     window.codexPulse.getModelUsage(range, periodStart),
   getModelUsageHeatmap: (): Promise<ModelUsageHeatmapData> =>
     window.codexPulse.getModelUsageHeatmap(),
+  getCodexResetCredits: (forceRefresh = false): Promise<CodexResetCreditsResult> =>
+    window.codexPulse.getCodexResetCredits(forceRefresh),
   getProviderUsage: (providerId: string): Promise<ProviderUsageResult> =>
     window.codexPulse.getProviderUsage(providerId),
   getProviderConfig: (providerId: string): Promise<ProviderConfigurationView> =>

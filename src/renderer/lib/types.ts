@@ -2,6 +2,7 @@ import type {
   AppSettings,
   AppStatus,
   AppUpdateState,
+  CodexResetCreditsResult,
   HistoryRange,
   ModelUsageHeatmapData,
   ModelUsageHeatmapCell,
@@ -20,6 +21,7 @@ export type {
   AppSettings,
   AppStatus,
   AppUpdateState,
+  CodexResetCreditsResult,
   HistoryRange,
   ModelUsageHeatmapData,
   ModelUsageHeatmapCell,
@@ -41,6 +43,7 @@ declare global {
       getUsageHistory(range: HistoryRange): Promise<UsageSnapshot[]>;
       getModelUsage(range: ModelUsageRange, periodStart?: number | null): Promise<ModelUsageSummary>;
       getModelUsageHeatmap(): Promise<ModelUsageHeatmapData>;
+      getCodexResetCredits(forceRefresh?: boolean): Promise<CodexResetCreditsResult>;
       getProviderUsage(providerId: string): Promise<ProviderUsageResult>;
       getProviderConfig(providerId: string): Promise<ProviderConfigurationView>;
       updateProviderConfig(update: ProviderConfigurationUpdate): Promise<ProviderConfigurationView>;

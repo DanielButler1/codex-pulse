@@ -16,6 +16,7 @@ export type CodexAuthResult =
       refreshToken: string | null;
       expiresAtMs: number | null;
       tokenEndpoint: string | null;
+      accountId: string | null;
       accountLabel: string | null;
       raw: AuthFilePayload;
     }
@@ -27,13 +28,7 @@ export type CodexAuthResult =
       authPath: string;
     };
 
-const ACCESS_TOKEN_KEYS = new Set([
-  "access_token",
-  "accessToken",
-  "id_token",
-  "idToken",
-  "token",
-]);
+const PREFERRED_ACCESS_TOKEN_KEYS = ["access_token", "accessToken", "token", "id_token", "idToken"];
 const REFRESH_TOKEN_KEYS = new Set(["refresh_token", "refreshToken"]);
 const EXPIRES_AT_KEYS = new Set(["expires_at", "expiresAt", "expiry", "exp"]);
 const EXPIRES_IN_KEYS = new Set(["expires_in", "expiresIn"]);
@@ -44,6 +39,7 @@ const TOKEN_ENDPOINT_KEYS = new Set([
   "refreshEndpoint",
   "oauth_token_endpoint",
 ]);
+const ACCOUNT_ID_KEYS = new Set(["account_id", "accountId", "chatgpt_account_id", "chatgptAccountId"]);
 const ACCOUNT_LABEL_KEYS = new Set(["email", "username", "account_label", "accountLabel"]);
 
 export function resolveCodexHome(): string {
@@ -77,9 +73,10 @@ export async function loadCodexAuth(): Promise<CodexAuthResult> {
     };
   }
 
-  const accessToken = findFirstString(payload, ACCESS_TOKEN_KEYS);
+  const accessToken = findPreferredString(payload, PREFERRED_ACCESS_TOKEN_KEYS);
   const refreshToken = findFirstString(payload, REFRESH_TOKEN_KEYS);
   const tokenEndpoint = findFirstString(payload, TOKEN_ENDPOINT_KEYS);
+  const accountId = findFirstString(payload, ACCOUNT_ID_KEYS);
 
   const jwtPayload = accessToken ? decodeJwtPayload(accessToken) : null;
   const expiresAtMs =
@@ -117,6 +114,7 @@ export async function loadCodexAuth(): Promise<CodexAuthResult> {
         refreshToken: refreshed.refreshToken ?? refreshToken ?? null,
         expiresAtMs: refreshed.expiresAtMs,
         tokenEndpoint: refreshed.tokenEndpoint ?? tokenEndpoint ?? null,
+        accountId: refreshed.accountId ?? accountId ?? null,
         accountLabel: refreshed.accountLabel ?? accountLabel ?? null,
         raw: payload,
       };
@@ -141,6 +139,7 @@ export async function loadCodexAuth(): Promise<CodexAuthResult> {
     refreshToken: refreshToken ?? null,
     expiresAtMs,
     tokenEndpoint: tokenEndpoint ?? null,
+    accountId: accountId ?? null,
     accountLabel: accountLabel ?? null,
     raw: payload,
   };
@@ -151,6 +150,7 @@ type RefreshedToken = {
   refreshToken: string | null;
   expiresAtMs: number | null;
   tokenEndpoint: string | null;
+  accountId: string | null;
   accountLabel: string | null;
 };
 
@@ -181,7 +181,7 @@ async function tryRefreshAccessToken(
     }
 
     const json = (await response.json()) as AuthFilePayload;
-    const nextAccessToken = findFirstString(json, ACCESS_TOKEN_KEYS);
+    const nextAccessToken = findPreferredString(json, PREFERRED_ACCESS_TOKEN_KEYS);
     if (!nextAccessToken) {
       return null;
     }
@@ -194,6 +194,7 @@ async function tryRefreshAccessToken(
         normalizeExpiresAt(findFirstValue(json, EXPIRES_AT_KEYS), findFirstValue(json, EXPIRES_IN_KEYS)) ??
         getJwtExpiryMs(jwtPayload),
       tokenEndpoint: findFirstString(json, TOKEN_ENDPOINT_KEYS) ?? endpoint,
+      accountId: findFirstString(json, ACCOUNT_ID_KEYS) ?? findFirstString(payload, ACCOUNT_ID_KEYS),
       accountLabel:
         findFirstString(json, ACCOUNT_LABEL_KEYS) ??
         getJwtAccountLabel(jwtPayload) ??
@@ -236,6 +237,16 @@ function findFirstValue(input: unknown, keySet: Set<string>, depth = 0): unknown
 function findFirstString(input: unknown, keySet: Set<string>): string | null {
   const found = findFirstValue(input, keySet);
   return typeof found === "string" && found.trim() ? found : null;
+}
+
+function findPreferredString(input: unknown, keys: string[]): string | null {
+  for (const key of keys) {
+    const found = findFirstValue(input, new Set([key]));
+    if (typeof found === "string" && found.trim()) {
+      return found;
+    }
+  }
+  return null;
 }
 
 function normalizeExpiresAt(expiresAtValue: unknown, expiresInValue: unknown): number | null {

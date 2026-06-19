@@ -3,6 +3,7 @@ import type {
   AppSettings,
   AppStatus,
   AppUpdateState,
+  CodexResetCreditsResult,
   HistoryRange,
   ModelUsageHeatmapData,
   ModelUsageRange,
@@ -25,6 +26,9 @@ const api = {
   },
   getModelUsageHeatmap(): Promise<ModelUsageHeatmapData> {
     return ipcRenderer.invoke("codexPulse:getModelUsageHeatmap");
+  },
+  getCodexResetCredits(forceRefresh = false): Promise<CodexResetCreditsResult> {
+    return ipcRenderer.invoke("codexPulse:getCodexResetCredits", forceRefresh);
   },
   getProviderUsage(providerId: string): Promise<ProviderUsageResult> {
     return ipcRenderer.invoke("codexPulse:getProviderUsage", providerId);
