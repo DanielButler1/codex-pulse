@@ -341,15 +341,22 @@ export default function App() {
   }, [history, selectedWindow]);
 
   const onRefreshNow = useCallback(async () => {
-    await codexPulseApi.refreshNow();
-    const latestUsage = await load();
-    await Promise.all([
-      loadModelHeatmap(),
-      loadResetCredits(true),
-      modelRange === "period"
-        ? loadModelUsage("period", latestUsage ?? modelUsageReferenceRef.current)
-        : loadModelUsage(modelRange),
-    ]);
+    try {
+      await codexPulseApi.refreshNow();
+      const latestUsage = await load();
+      await Promise.all([
+        loadModelHeatmap(),
+        loadResetCredits(true),
+        modelRange === "period"
+          ? loadModelUsage("period", latestUsage ?? modelUsageReferenceRef.current)
+          : loadModelUsage(modelRange),
+      ]);
+    } catch (error) {
+      console.error("Failed to refresh usage", error);
+      await load().catch((loadError) => {
+        console.error("Failed to reload usage after refresh error", loadError);
+      });
+    }
   }, [load, loadModelHeatmap, loadModelUsage, loadResetCredits, modelRange]);
 
   const onModelRangeChange = useCallback(

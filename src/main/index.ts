@@ -358,11 +358,14 @@ function getCodexResetCredits(forceRefresh: boolean): Promise<CodexResetCreditsR
     return resetCreditsInflight;
   }
 
-  resetCreditsInflight = fetchCodexResetCredits().then((result) => {
-    resetCreditsCache = result.error ? null : { result, cachedAt: Date.now() };
-    resetCreditsInflight = null;
-    return result;
-  });
+  resetCreditsInflight = fetchCodexResetCredits()
+    .then((result) => {
+      resetCreditsCache = result.error ? null : { result, cachedAt: Date.now() };
+      return result;
+    })
+    .finally(() => {
+      resetCreditsInflight = null;
+    });
   return resetCreditsInflight;
 }
 
