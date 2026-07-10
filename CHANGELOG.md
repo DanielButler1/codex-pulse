@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.10-beta
+
+- Fixed the Refresh now action crashing the app when a usage provider fails unexpectedly.
+- Coalesced overlapping scheduled and manual usage polls to avoid concurrent refresh failures.
+- Made reset-credit requests recover cleanly after rejected fetches.
+- Added API cost estimates for GPT-5.6 Sol, Terra, and Luna, including cached-input pricing.
+
 ## 0.0.9-beta
 
 - Added a Resets section that shows available Codex reset credits, including grant and expiry datetimes.

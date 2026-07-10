@@ -65,12 +65,30 @@ const FALLBACK_MODEL_PRICING: ModelPricing = {
   outputUsdPer1M: 15,
 };
 
-// Rough defaults aligned to current OpenAI API pricing bands as of 2026-06-12.
+// Rough defaults aligned to current OpenAI API pricing bands as of 2026-07-10.
 // Sources:
 // - https://developers.openai.com/api/docs/pricing
+// - https://openai.com/index/gpt-5-6/
 // - https://developers.openai.com/api/docs/models/gpt-5.2-codex
 // - https://developers.openai.com/api/docs/models/gpt-5.3-codex
 const MODEL_PRICING: Array<{ prefix: string; pricing: ModelPricing }> = [
+  {
+    prefix: "gpt-5.6-luna",
+    pricing: { inputUsdPer1M: 1, cachedInputUsdPer1M: 0.1, outputUsdPer1M: 6 },
+  },
+  {
+    prefix: "gpt-5.6-terra",
+    pricing: { inputUsdPer1M: 2.5, cachedInputUsdPer1M: 0.25, outputUsdPer1M: 15 },
+  },
+  {
+    prefix: "gpt-5.6-sol",
+    pricing: { inputUsdPer1M: 5, cachedInputUsdPer1M: 0.5, outputUsdPer1M: 30 },
+  },
+  {
+    // Treat an unqualified GPT-5.6 model ID as the flagship Sol tier.
+    prefix: "gpt-5.6",
+    pricing: { inputUsdPer1M: 5, cachedInputUsdPer1M: 0.5, outputUsdPer1M: 30 },
+  },
   {
     prefix: "gpt-5.5",
     pricing: { inputUsdPer1M: 5, cachedInputUsdPer1M: 0.5, outputUsdPer1M: 30 },

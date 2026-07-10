@@ -21,6 +21,7 @@ export class UsageScheduler {
   private readonly usageService: CodexUsageService;
   private readonly onUpdate?: (snapshot: UsageSnapshot | null, status: AppStatus) => void;
   private timer: NodeJS.Timeout | null = null;
+  private pollInFlight: Promise<UsageSnapshot | null> | null = null;
   private running = false;
   private lastCleanupAt = 0;
   private latestSnapshot: UsageSnapshot | null;
@@ -110,8 +111,25 @@ export class UsageScheduler {
   }
 
   private async runPoll(): Promise<UsageSnapshot | null> {
+    if (this.pollInFlight) {
+      return this.pollInFlight;
+    }
+
+    this.pollInFlight = this.executePoll().finally(() => {
+      this.pollInFlight = null;
+    });
+    return this.pollInFlight;
+  }
+
+  private async executePoll(): Promise<UsageSnapshot | null> {
     this.status.lastCheckedAt = Date.now();
-    const result = await this.usageService.pollUsage();
+    let result;
+    try {
+      result = await this.usageService.pollUsage();
+    } catch (error) {
+      this.recordFailure(error instanceof Error ? error.message : "Unexpected usage refresh failure.");
+      return null;
+    }
 
     this.status.authStatus = result.authStatus;
     this.status.authMessage = result.authMessage;
@@ -138,14 +156,18 @@ export class UsageScheduler {
       return this.latestSnapshot;
     }
 
-    this.status.lastError = result.errorMessage ?? "Usage endpoint failed.";
+    this.recordFailure(result.errorMessage ?? "Usage endpoint failed.");
+    return null;
+  }
+
+  private recordFailure(message: string) {
+    this.status.lastError = message;
     this.status.consecutiveFailures += 1;
     this.status.usingBackoff = this.status.consecutiveFailures >= FAILURE_BACKOFF_THRESHOLD;
     this.status.effectivePollIntervalSeconds = this.status.usingBackoff
       ? FAILURE_BACKOFF_SECONDS
       : FIXED_POLL_SECONDS;
     this.emitUpdate(this.latestSnapshot);
-    return null;
   }
 
   private currentIntervalMs(): number {
