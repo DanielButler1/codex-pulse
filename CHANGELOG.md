@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.12-beta
+
+- Added token-share percentages for every model in the model usage table.
+- Added cost-weighted estimated limit use per model for the current rate-limit period and longer tracked ranges.
+- Aggregate confirmed weekly-limit increases across resets for multi-period estimates.
+
 ## 0.0.11-beta
 
 - Require three consecutive readings before accepting a material overall usage drop as a limit reset.

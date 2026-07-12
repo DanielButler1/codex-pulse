@@ -5,6 +5,7 @@ import type {
   ModelUsageRange,
   ModelUsageRow,
   ModelUsageSummary,
+  UsageSnapshot,
 } from "../../../shared/types";
 import { resolveCodexHome } from "./codex-auth";
 
@@ -122,6 +123,8 @@ const MODEL_PRICING: Array<{ prefix: string; pricing: ModelPricing }> = [
 export async function getModelUsageSummary(
   range: ModelUsageRange,
   periodStart?: number,
+  currentWeeklyUsedPercent: number | null = null,
+  usageHistory: UsageSnapshot[] = [],
 ): Promise<ModelUsageSummary> {
   const generatedAt = Date.now();
   const since =
@@ -178,6 +181,26 @@ export async function getModelUsageSummary(
     },
   );
 
+  const limitEstimate =
+    range === "period" &&
+    currentWeeklyUsedPercent != null &&
+    Number.isFinite(currentWeeklyUsedPercent)
+      ? {
+          totalUsedPercent: Math.max(0, Math.min(100, currentWeeklyUsedPercent)),
+          scope: "current_weekly_limit" as const,
+        }
+      : {
+          totalUsedPercent: calculateObservedLimitConsumption(usageHistory, since, generatedAt),
+          scope: "observed_range_consumption" as const,
+        };
+  for (const model of models) {
+    model.tokenSharePercent = percentageOf(model.totalTokens, totals.totalTokens);
+    model.estimatedLimitUsagePercent =
+      limitEstimate.totalUsedPercent == null
+        ? null
+        : limitEstimate.totalUsedPercent * percentageOf(model.estimatedCostUsd, totals.estimatedCostUsd) / 100;
+  }
+
   const timeline = buildContinuousTimeline({
     timelineBuckets,
     granularity: timelineGranularity,
@@ -196,6 +219,10 @@ export async function getModelUsageSummary(
     source: "rollout",
     models,
     totals,
+    limitEstimate: {
+      ...limitEstimate,
+      allocationMethod: "estimated_api_cost",
+    },
     monthProjection,
     timeline: {
       granularity: timelineGranularity,
@@ -412,6 +439,8 @@ function ensureModel(
     reasoningOutputTokens: 0,
     totalTokens: 0,
     estimatedCostUsd: 0,
+    tokenSharePercent: 0,
+    estimatedLimitUsagePercent: null,
   };
   byModel.set(normalizedModel, created);
   return created;
@@ -796,6 +825,49 @@ function estimateCostUsd(model: string, usage: TokenTotals): number {
     return 0;
   }
   return estimated;
+}
+
+function percentageOf(value: number, total: number): number {
+  if (!Number.isFinite(value) || !Number.isFinite(total) || value <= 0 || total <= 0) {
+    return 0;
+  }
+  return (value / total) * 100;
+}
+
+function calculateObservedLimitConsumption(
+  snapshots: UsageSnapshot[],
+  since: number,
+  until: number,
+): number | null {
+  const usable = snapshots
+    .filter(
+      (snapshot) =>
+        snapshot.checkedAt <= until &&
+        snapshot.secondaryUsedPercent != null &&
+        Number.isFinite(snapshot.secondaryUsedPercent),
+    )
+    .sort((a, b) => a.checkedAt - b.checkedAt);
+
+  if (usable.length < 2) {
+    return null;
+  }
+
+  let totalUsedPercent = 0;
+  let hasObservation = false;
+  for (let index = 1; index < usable.length; index += 1) {
+    const previous = usable[index - 1];
+    const current = usable[index];
+    if (current.checkedAt < since) {
+      continue;
+    }
+    const increase = current.secondaryUsedPercent! - previous.secondaryUsedPercent!;
+    if (increase > 0) {
+      totalUsedPercent += increase;
+    }
+    hasObservation = true;
+  }
+
+  return hasObservation ? totalUsedPercent : null;
 }
 
 function resolveModelPricing(model: string): ModelPricing {

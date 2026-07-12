@@ -176,6 +176,10 @@ export function ModelUsageTable({
     subscriptionContext.monthlyCostUsd > 0 && summary?.totals.estimatedCostUsd != null
       ? summary.totals.estimatedCostUsd / subscriptionContext.monthlyCostUsd
       : null;
+  const limitUsageLabel =
+    summary?.limitEstimate.scope === "current_weekly_limit"
+      ? "currently reported weekly usage"
+      : "observed weekly-limit consumption from tracked snapshots in this range";
 
   return (
     <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
@@ -184,7 +188,7 @@ export function ModelUsageTable({
           <h2 className="text-base font-medium text-neutral-200">Model usage</h2>
           <p className="text-sm text-neutral-400">
             {range === "period"
-              ? "Requests and token usage by model in the current rate limit period"
+              ? "Requests and token usage by model in the current rate limit period. Limit use is estimated from API-cost weighting."
               : range === "sub_period"
                 ? "Requests and token usage by model in the current subscription period"
                 : "Requests and token usage by model from local rollout logs"}
@@ -218,6 +222,12 @@ export function ModelUsageTable({
         <Metric label="Total tokens" value={formatInt(summary?.totals.totalTokens)} />
         <Metric label="Est. API cost" value={formatUsd(summary?.totals.estimatedCostUsd)} />
       </div>
+
+      {summary?.limitEstimate.totalUsedPercent != null ? (
+        <p className="mt-3 text-xs text-neutral-500">
+          Estimated limit use allocates {formatPercent(summary.limitEstimate.totalUsedPercent)} of {limitUsageLabel} by estimated API cost. Token share is based on observed local tokens.
+        </p>
+      ) : null}
 
       {loading ? (
         <p className="mt-4 text-sm text-neutral-400">Loading model usage...</p>
@@ -350,7 +360,9 @@ export function ModelUsageTable({
                   <th className="px-2 py-2">Output</th>
                   <th className="px-2 py-2">Reasoning subset</th>
                   <th className="px-2 py-2">Total</th>
+                  <th className="px-2 py-2">Token share</th>
                   <th className="px-2 py-2">Est. API cost</th>
+                  <th className="px-2 py-2">Est. limit use</th>
                 </tr>
               </thead>
               <tbody>
@@ -363,7 +375,13 @@ export function ModelUsageTable({
                     <td className="px-2 py-2">{formatInt(model.outputTokens)}</td>
                     <td className="px-2 py-2">{formatInt(model.reasoningOutputTokens)}</td>
                     <td className="px-2 py-2">{formatInt(model.totalTokens)}</td>
+                    <td className="px-2 py-2">{formatPercent(model.tokenSharePercent)}</td>
                     <td className="px-2 py-2">{formatUsd(model.estimatedCostUsd)}</td>
+                    <td className="px-2 py-2">
+                      {model.estimatedLimitUsagePercent == null
+                        ? "--"
+                        : formatPercent(model.estimatedLimitUsagePercent)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -380,7 +398,13 @@ export function ModelUsageTable({
                     {formatInt(summary.totals.reasoningOutputTokens)}
                   </td>
                   <td className="px-2 py-2 font-semibold">{formatInt(summary.totals.totalTokens)}</td>
+                  <td className="px-2 py-2 font-semibold">100%</td>
                   <td className="px-2 py-2 font-semibold">{formatUsd(summary.totals.estimatedCostUsd)}</td>
+                  <td className="px-2 py-2 font-semibold">
+                    {summary.limitEstimate.totalUsedPercent == null
+                      ? "--"
+                      : formatPercent(summary.limitEstimate.totalUsedPercent)}
+                  </td>
                 </tr>
               </tfoot>
             </table>
@@ -558,6 +582,13 @@ function formatInt(value: number | null | undefined): string {
     return "0";
   }
   return Math.max(0, Math.trunc(value)).toLocaleString();
+}
+
+function formatPercent(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "--";
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)}%`;
 }
 
 function formatCompactInt(value: number | null | undefined): string {
