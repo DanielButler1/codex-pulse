@@ -1,4 +1,5 @@
 import type { AppSettings, AppStatus, UsageSnapshot } from "../../../shared/types";
+import { normalizeCodexLimitWindows } from "../../../shared/codex-limit-windows";
 import type { UsageDatabase } from "../db";
 import { calculateBurnRates, estimateLimitHit } from "./predictor";
 import { CodexUsageService } from "./codex-usage";
@@ -145,7 +146,8 @@ export class UsageScheduler {
     this.status.providerMode = result.providerMode;
 
     if (result.snapshot) {
-      const acceptedSnapshot = this.confirmSnapshot(result.snapshot);
+      const normalizedSnapshot = normalizeCodexLimitWindows(result.snapshot);
+      const acceptedSnapshot = this.confirmSnapshot(normalizedSnapshot);
       if (!acceptedSnapshot) {
         this.recordSuccessfulPoll();
         this.emitUpdate(this.latestSnapshot);

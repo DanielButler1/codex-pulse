@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { normalizeCodexLimitWindows } from "../../shared/codex-limit-windows";
 import type { HistoryRange, UsageSnapshot } from "../../shared/types";
 import { filterTransientLimitDrops } from "./services/snapshot-validation";
 
@@ -170,7 +171,7 @@ function mapRowToSnapshot(row: SnapshotRow): UsageSnapshot {
     }
   }
 
-  return {
+  return normalizeCodexLimitWindows({
     id: row.id,
     checkedAt: row.checked_at,
     provider: "codex",
@@ -186,5 +187,5 @@ function mapRowToSnapshot(row: SnapshotRow): UsageSnapshot {
     creditsGranted: row.credits_granted,
     creditsUsed: row.credits_used,
     raw,
-  };
+  });
 }
