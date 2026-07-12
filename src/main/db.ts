@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import type { HistoryRange, UsageSnapshot } from "../../shared/types";
+import { filterTransientLimitDrops } from "./services/snapshot-validation";
 
 type SnapshotRow = {
   id: number;
@@ -143,7 +144,7 @@ export class UsageDatabase {
       ORDER BY checked_at ASC
     `);
 
-    return statement.all(since).map(mapRowToSnapshot);
+    return filterTransientLimitDrops(statement.all(since).map(mapRowToSnapshot));
   }
 
   cleanupOlderThan(cutoffMs: number): number {

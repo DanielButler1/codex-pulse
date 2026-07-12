@@ -2,6 +2,10 @@ import type { AppSettings, AppStatus, UsageSnapshot } from "../../../shared/type
 import type { UsageDatabase } from "../db";
 import { calculateBurnRates, estimateLimitHit } from "./predictor";
 import { CodexUsageService } from "./codex-usage";
+import {
+  hasMaterialLimitDrop,
+  REQUIRED_LIMIT_DROP_CONFIRMATIONS,
+} from "./snapshot-validation";
 
 type SchedulerDeps = {
   db: UsageDatabase;
@@ -16,12 +20,17 @@ const FAILURE_BACKOFF_SECONDS = 5 * 60;
 const FAILURE_BACKOFF_THRESHOLD = 3;
 const FIXED_POLL_SECONDS = 60;
 
+type PendingLimitDrop = {
+  confirmations: number;
+};
+
 export class UsageScheduler {
   private readonly db: UsageDatabase;
   private readonly usageService: CodexUsageService;
   private readonly onUpdate?: (snapshot: UsageSnapshot | null, status: AppStatus) => void;
   private timer: NodeJS.Timeout | null = null;
   private pollInFlight: Promise<UsageSnapshot | null> | null = null;
+  private pendingLimitDrop: PendingLimitDrop | null = null;
   private running = false;
   private lastCleanupAt = 0;
   private latestSnapshot: UsageSnapshot | null;
@@ -136,20 +145,24 @@ export class UsageScheduler {
     this.status.providerMode = result.providerMode;
 
     if (result.snapshot) {
-      if (this.latestSnapshot && !hasMeaningfulUsageChange(this.latestSnapshot, result.snapshot)) {
+      const acceptedSnapshot = this.confirmSnapshot(result.snapshot);
+      if (!acceptedSnapshot) {
+        this.recordSuccessfulPoll();
+        this.emitUpdate(this.latestSnapshot);
+        return this.latestSnapshot;
+      }
+
+      if (this.latestSnapshot && !hasMeaningfulUsageChange(this.latestSnapshot, acceptedSnapshot)) {
         this.latestSnapshot = {
-          ...result.snapshot,
+          ...acceptedSnapshot,
           id: this.latestSnapshot.id,
         };
       } else {
-        const id = this.db.insertSnapshot(result.snapshot);
-        this.latestSnapshot = { ...result.snapshot, id };
+        const id = this.db.insertSnapshot(acceptedSnapshot);
+        this.latestSnapshot = { ...acceptedSnapshot, id };
       }
-      this.status.lastSuccessAt = result.snapshot.checkedAt;
-      this.status.lastError = null;
-      this.status.consecutiveFailures = 0;
-      this.status.usingBackoff = false;
-      this.status.effectivePollIntervalSeconds = FIXED_POLL_SECONDS;
+      this.status.lastSuccessAt = acceptedSnapshot.checkedAt;
+      this.recordSuccessfulPoll();
       this.recomputePredictorState(this.latestSnapshot);
       this.cleanupOldRowsIfDue();
       this.emitUpdate(this.latestSnapshot);
@@ -168,6 +181,29 @@ export class UsageScheduler {
       ? FAILURE_BACKOFF_SECONDS
       : FIXED_POLL_SECONDS;
     this.emitUpdate(this.latestSnapshot);
+  }
+
+  private recordSuccessfulPoll() {
+    this.status.lastError = null;
+    this.status.consecutiveFailures = 0;
+    this.status.usingBackoff = false;
+    this.status.effectivePollIntervalSeconds = FIXED_POLL_SECONDS;
+  }
+
+  private confirmSnapshot(snapshot: UsageSnapshot): UsageSnapshot | null {
+    if (!this.latestSnapshot || !hasMaterialLimitDrop(this.latestSnapshot, snapshot)) {
+      this.pendingLimitDrop = null;
+      return snapshot;
+    }
+
+    const confirmations = (this.pendingLimitDrop?.confirmations ?? 0) + 1;
+    if (confirmations < REQUIRED_LIMIT_DROP_CONFIRMATIONS) {
+      this.pendingLimitDrop = { confirmations };
+      return null;
+    }
+
+    this.pendingLimitDrop = null;
+    return snapshot;
   }
 
   private currentIntervalMs(): number {

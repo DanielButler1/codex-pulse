@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.11-beta
+
+- Require three consecutive readings before accepting a material overall usage drop as a limit reset.
+- Ignore historical one- and two-sample drops that immediately recover when drawing charts and calculating burn rates.
+- Keep legitimate readings that raise overall usage, even if one individual limit falls.
+- Use explicit installer filenames that match auto-update manifests.
+
 ## 0.0.10-beta
 
 - Fixed the Refresh now action crashing the app when a usage provider fails unexpectedly.
