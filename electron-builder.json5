@@ -15,17 +15,17 @@
   },
   "mac": {
     "target": ["dmg"],
-    "artifactName": "${productName}-Mac-${arch}-${version}-Installer.${ext}",
+    "artifactName": "Codex-Pulse-Mac-${arch}-${version}-Installer.${ext}",
     "icon": "build/icon.png"
   },
   "win": {
     "target": [{ "target": "nsis", "arch": ["x64"] }],
-    "artifactName": "${productName}-Windows-${arch}-${version}-Setup.${ext}",
+    "artifactName": "Codex-Pulse-Windows-${arch}-${version}-Setup.${ext}",
     "icon": "build/icon.ico"
   },
   "linux": {
     "target": ["AppImage"],
-    "artifactName": "${productName}-Linux-${arch}-${version}.${ext}",
+    "artifactName": "Codex-Pulse-Linux-${arch}-${version}.${ext}",
     "icon": "build/icon.png"
   },
   "nsis": {
