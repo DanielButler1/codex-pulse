@@ -786,12 +786,14 @@ function LimitCard({
   resetAt,
   warning,
   displayMode,
+  unavailableLabel,
 }: {
   title: string;
   remaining: number | null;
   resetAt: number | null;
   warning?: FiveHourLimitWarning | null;
   displayMode: AppSettings["limitDisplayMode"];
+  unavailableLabel?: string;
 }) {
   const used = remaining == null ? null : Math.max(0, 100 - remaining);
   const displayPercent = displayMode === "used" ? used : remaining;
@@ -816,10 +818,16 @@ function LimitCard({
           </div>
         ) : null}
       </div>
-      <p className="mt-2 text-4xl font-semibold leading-none">
-        {displayPercent != null ? `${displayPercent.toFixed(0)}%` : "--"}
-        <span className="ml-2 text-2xl font-normal text-neutral-300">{displayLabel}</span>
-      </p>
+      {displayPercent != null ? (
+        <p className="mt-2 text-4xl font-semibold leading-none">
+          {displayPercent.toFixed(0)}%
+          <span className="ml-2 text-2xl font-normal text-neutral-300">{displayLabel}</span>
+        </p>
+      ) : (
+        <p className="mt-2 text-3xl font-semibold leading-none text-neutral-300">
+          {unavailableLabel ?? "--"}
+        </p>
+      )}
       <div className="mt-5 h-2.5 rounded-full bg-neutral-200/20">
         <div
           className="h-full rounded-full bg-emerald-500"
@@ -827,7 +835,11 @@ function LimitCard({
         />
       </div>
       <p className="mt-3 text-sm text-neutral-400">
-        Resets {resetAt ? formatResetLabel(resetAt) : "Not reported"}
+        {resetAt
+          ? `Resets ${formatResetLabel(resetAt)}`
+          : unavailableLabel
+            ? "No active window reported"
+            : "Reset not reported"}
       </p>
     </article>
   );
@@ -911,6 +923,11 @@ function ProviderUsagePanel({
           resetAt={primaryResetAt}
           warning={fiveHourLimitWarning}
           displayMode={displayMode}
+          unavailableLabel={
+            snapshot && snapshot.primaryUsedPercent == null && snapshot.secondaryUsedPercent != null
+              ? "Not active"
+              : undefined
+          }
         />
         <LimitCard
           title={dashboard.secondaryLabel ?? "Secondary"}
