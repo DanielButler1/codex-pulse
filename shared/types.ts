@@ -152,6 +152,8 @@ export type ModelUsageRow = {
   reasoningOutputTokens: number;
   totalTokens: number;
   estimatedCostUsd: number;
+  tokenSharePercent: number;
+  estimatedLimitUsagePercent: number | null;
 };
 
 export type ModelUsageSummary = {
@@ -159,7 +161,12 @@ export type ModelUsageSummary = {
   generatedAt: number;
   source: "rollout";
   models: ModelUsageRow[];
-  totals: Omit<ModelUsageRow, "model">;
+  totals: Omit<ModelUsageRow, "model" | "tokenSharePercent" | "estimatedLimitUsagePercent">;
+  limitEstimate: {
+    totalUsedPercent: number | null;
+    scope: "current_weekly_limit" | "observed_range_consumption" | null;
+    allocationMethod: "estimated_api_cost";
+  };
   monthProjection: {
     monthStart: number;
     monthEnd: number;
