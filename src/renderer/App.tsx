@@ -92,6 +92,14 @@ type PredictionTimeline = {
   points: PredictionTimelinePoint[];
 };
 
+type PaceChartPoint = PredictionTimelinePoint & {
+  actualRemaining: number | null;
+  currentRemaining: number | null;
+  targetRemaining: number | null;
+};
+
+type PaceState = "on_pace" | "slow_down" | "speed_up";
+
 type FiveHourLimitWarning = {
   hitAt: number;
   usedPercent: number;
@@ -445,12 +453,61 @@ export default function App() {
       : predictionTimeline.hitState === "no_hit_before_reset"
         ? "Before weekly reset"
         : "";
-  const hitLabelLeftPercent = getHitLabelLeftPercent(
-    predictionTimeline.periodStart,
-    predictionTimeline.hitAt,
-    predictionTimeline.resetAt,
-  );
   const evenPaceGapText = formatEvenPaceGap(predictionTimeline.evenPaceGap);
+  const remainingDays =
+    weeklyResetAt != null && latest != null
+      ? Math.max(0, (weeklyResetAt - latest.checkedAt) / (24 * 60 * 60 * 1000))
+      : null;
+  const suggestedDailyPace =
+    secondaryRemaining != null && remainingDays != null && remainingDays > 0
+      ? secondaryRemaining / remainingDays
+      : null;
+  const targetRemainingNow =
+    predictionTimeline.evenPaceUsedNow == null ? null : 100 - predictionTimeline.evenPaceUsedNow;
+  const paceDifference =
+    secondaryRemaining != null && targetRemainingNow != null
+      ? secondaryRemaining - targetRemainingNow
+      : null;
+  const paceState: PaceState =
+    paceDifference == null || Math.abs(paceDifference) <= 1
+      ? "on_pace"
+      : paceDifference > 0
+        ? "speed_up"
+        : "slow_down";
+  const paceMessage =
+    paceDifference == null
+      ? "Keep tracking to get a reliable pace forecast."
+      : paceState === "on_pace"
+        ? "You are within 1% of your target pace."
+        : paceState === "speed_up"
+          ? `You have ${paceDifference.toFixed(1)}% more remaining than target — you can speed up.`
+          : `You have ${Math.abs(paceDifference).toFixed(1)}% less remaining than target — slow down.`;
+  const paceChartPoints = useMemo<PaceChartPoint[]>(() => {
+    const rows = new Map<number, PaceChartPoint>();
+    const addRow = (checkedAt: number, values: Partial<PaceChartPoint>) => {
+      const current = rows.get(checkedAt) ?? {
+        checkedAt,
+        usedActual: null,
+        usedProjected: null,
+        usedEvenPace: null,
+        actualRemaining: null,
+        currentRemaining: null,
+        targetRemaining: null,
+      };
+      rows.set(checkedAt, { ...current, ...values });
+    };
+
+    for (const point of predictionTimeline.points) {
+      addRow(point.checkedAt, {
+        ...point,
+        actualRemaining: point.usedActual == null ? null : 100 - point.usedActual,
+        currentRemaining: point.usedProjected == null ? null : 100 - point.usedProjected,
+        targetRemaining: point.usedEvenPace == null ? null : 100 - point.usedEvenPace,
+      });
+    }
+
+    return [...rows.values()].sort((a, b) => a.checkedAt - b.checkedAt);
+  }, [predictionTimeline]);
 
   return (
     <div className="min-h-screen bg-black text-neutral-100">
@@ -575,41 +632,48 @@ export default function App() {
               </section>
 
               <>
-                  <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-                    <h3 className="text-xl font-semibold">Predicted limit hit</h3>
-                    <p className="mt-1 text-sm text-neutral-400">
-                      At your current usage rate, you&apos;ll hit your weekly limit
-                    </p>
-                    <div className="mt-4 grid gap-4 sm:grid-cols-4">
+                  <section className="rounded-2xl bg-neutral-900 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
-                        <p className="text-xs uppercase tracking-wide text-neutral-500">Estimated hit</p>
-                        <p className="mt-1 text-3xl font-semibold">{estimatedTimeText}</p>
-                        {estimatedDateText ? <p className="mt-1 text-base text-neutral-400">{estimatedDateText}</p> : null}
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-neutral-500">Current pace</p>
-                        <p className="mt-1 text-sm text-neutral-300">{formatBurnRate(predictionTimeline.projectedRate)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-neutral-500">Lead time</p>
-                        <p className="mt-1 text-sm text-neutral-300">
-                          {formatLeadTime(
-                            predictionTimeline.hitAt,
-                            predictionTimeline.resetAt,
-                            predictionTimeline.hitState,
-                          )}
+                        <div className="flex items-end gap-2">
+                          <p className="text-5xl font-semibold leading-none tracking-tight text-neutral-50">
+                            {secondaryRemaining == null ? "--" : Math.round(secondaryRemaining)}
+                          </p>
+                          <p className="mb-1 text-lg font-medium text-neutral-400">% remaining</p>
+                        </div>
+                        <p
+                          className={`mt-5 text-xl font-semibold ${
+                            paceState === "slow_down"
+                              ? "text-red-400"
+                              : paceState === "speed_up"
+                                ? "text-sky-400"
+                                : "text-emerald-400"
+                          }`}
+                        >
+                          {paceState === "slow_down"
+                            ? "Slow down"
+                            : paceState === "speed_up"
+                              ? "Speed up"
+                              : "On pace"}
                         </p>
+                        <p className="mt-1 text-base text-neutral-400">{paceMessage}</p>
                       </div>
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-neutral-500">Even pace gap</p>
-                        <p className="mt-1 text-sm text-neutral-300">{evenPaceGapText}</p>
+                      <div className="grid gap-3 text-right text-sm sm:text-left">
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-500">Current pace</p>
+                          <p className="mt-1 text-neutral-200">{formatBurnRate(predictionTimeline.projectedRate)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-500">Even pace gap</p>
+                          <p className="mt-1 text-neutral-200">{evenPaceGapText}</p>
+                        </div>
                       </div>
                     </div>
-                    <div className="mt-4">
-                      <div className="h-64 w-full">
+                    <div className="mt-5">
+                      <div className="h-80 w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={predictionTimeline.points} margin={{ top: 8, right: 0, left: 0, bottom: 8 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                          <AreaChart data={paceChartPoints} margin={{ top: 12, right: 14, left: 2, bottom: 4 }}>
+                            <CartesianGrid strokeDasharray="3 5" stroke="#2b2b2b" vertical />
                             <XAxis
                               type="number"
                               dataKey="checkedAt"
@@ -617,115 +681,127 @@ export default function App() {
                                 predictionTimeline.periodStart ?? "auto",
                                 predictionTimeline.resetAt ?? "auto",
                               ]}
-                              stroke="#a3a3a3"
+                              stroke="#737373"
                               tickLine={false}
                               axisLine={false}
                               tick={false}
                             />
                             <YAxis
                               domain={[0, 100]}
-                              stroke="#a3a3a3"
+                              ticks={[0, 25, 50, 75, 100]}
+                              stroke="#737373"
                               tickLine={false}
                               axisLine={false}
-                              tick={false}
-                              width={0}
+                              tick={{ fill: "#a3a3a3", fontSize: 12 }}
+                              tickFormatter={(value: number) => `${value}%`}
                             />
                             <Tooltip
                               contentStyle={{
-                                backgroundColor: "#171717",
-                                border: "1px solid #404040",
-                                borderRadius: "0.75rem",
+                                backgroundColor: "#181818",
+                                border: "1px solid #525252",
+                                borderRadius: "0.5rem",
                                 color: "#f5f5f5",
                               }}
                               formatter={(value: unknown) =>
-                                typeof value === "number" ? `${value.toFixed(1)}% used` : String(value ?? "")
+                                typeof value === "number" ? `${value.toFixed(1)}% remaining` : String(value ?? "")
                               }
                               labelFormatter={(value: unknown) =>
-                                new Date(typeof value === "number" ? value : Number(value)).toLocaleString()
+                                new Date(typeof value === "number" ? value : Number(value)).toLocaleString([], {
+                                  weekday: "short",
+                                  day: "numeric",
+                                  month: "short",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
                               }
                             />
-                            {predictionTimeline.hitAt ? (
-                              <ReferenceLine
-                                x={predictionTimeline.hitAt}
-                                stroke="#c4b5fd"
-                                strokeDasharray="3 3"
-                              />
-                            ) : null}
-                            {predictionTimeline.hitAt ? (
-                              <ReferenceDot
-                                x={predictionTimeline.hitAt}
-                                y={100}
-                                r={6}
-                                fill="#0a0a0a"
-                                stroke="#c4b5fd"
-                                strokeWidth={3}
-                              />
-                            ) : null}
-                            <Area
-                              type="monotone"
-                              dataKey="usedActual"
-                              stroke="#22c55e"
-                              fill="#22c55e"
-                              fillOpacity={0.08}
-                              strokeWidth={2}
-                              connectNulls
-                              name="Actual used"
+                            <Legend
+                              verticalAlign="top"
+                              align="left"
+                              iconType="plainline"
+                              wrapperStyle={{ color: "#b3b3b3", fontSize: "12px", paddingBottom: "12px" }}
                             />
+                            {latest ? (
+                              <ReferenceLine
+                                x={latest.checkedAt}
+                                stroke="#737373"
+                                strokeDasharray="3 3"
+                                label={{ value: "Now", position: "insideTopRight", fill: "#e5e5e5", fontSize: 12 }}
+                              />
+                            ) : null}
+                            {latest && secondaryRemaining != null ? (
+                              <ReferenceDot
+                                x={latest.checkedAt}
+                                y={secondaryRemaining}
+                                r={6}
+                                fill="#fb5a5a"
+                                stroke="#121212"
+                                strokeWidth={2}
+                              />
+                            ) : null}
                             <Area
                               type="linear"
-                              dataKey="usedEvenPace"
-                              stroke="#ef4444"
+                              dataKey="targetRemaining"
+                              stroke="#63c174"
                               strokeDasharray="4 4"
                               fill="transparent"
                               fillOpacity={0}
                               strokeWidth={2}
                               connectNulls
-                              name="Even pace to 100%"
+                              name="Target"
                             />
                             <Area
                               type="linear"
-                              dataKey="usedProjected"
-                              stroke="#c4b5fd"
+                              dataKey="actualRemaining"
+                              stroke="#4f8cff"
+                              fill="transparent"
+                              fillOpacity={0}
+                              strokeWidth={2.5}
+                              connectNulls
+                              name="Actual"
+                            />
+                            <Area
+                              type="linear"
+                              dataKey="currentRemaining"
+                              stroke="#fb5a5a"
                               strokeDasharray="5 4"
-                              fill="#c4b5fd"
-                              fillOpacity={0.06}
+                              fill="transparent"
+                              fillOpacity={0}
                               strokeWidth={2}
                               connectNulls={false}
-                              name="Projected used"
+                              name="Trajectory"
                             />
                           </AreaChart>
                         </ResponsiveContainer>
                       </div>
-                      <p className="mt-2 text-xs text-neutral-500">
-                        Red dashed line shows the even pace needed to use 100% exactly at reset.
-                      </p>
-                      <div className="relative mt-2 min-h-[3rem] text-xs text-neutral-400">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <p className="text-neutral-200">
-                              {predictionTimeline.periodStart ? formatDate(predictionTimeline.periodStart) : "--"}
-                            </p>
-                            <p>Period started</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-neutral-200">
-                              {predictionTimeline.resetAt ? formatDate(predictionTimeline.resetAt) : "--"}
-                            </p>
-                            <p>Limit resets</p>
-                          </div>
+                      <div className="mt-3 grid gap-x-8 gap-y-2 border-t border-neutral-800 pt-4 text-sm sm:grid-cols-2">
+                        <div className="flex justify-between gap-4">
+                          <span className="text-neutral-500">Reset</span>
+                          <span className="font-medium text-neutral-200">
+                            {predictionTimeline.resetAt ? formatDateTime(predictionTimeline.resetAt) : "Not reported"}
+                          </span>
                         </div>
-                        <div
-                          className="absolute top-0 text-center"
-                          style={{ left: `${hitLabelLeftPercent}%`, transform: "translateX(-50%)" }}
-                        >
-                          <p className="text-neutral-200">
-                            {predictionTimeline.hitState === "hit"
-                              ? `${formatDate(predictionTimeline.hitAt)} ${formatTime(predictionTimeline.hitAt)}`
-                              : predictionTimeline.hitState === "no_hit_before_reset"
-                                ? "No hit expected"
-                                : "--"}
-                          </p>
-                          <p>Limit hit</p>
+                        <div className="flex justify-between gap-4">
+                          <span className="text-neutral-500">Suggested pace</span>
+                          <span className="font-medium text-neutral-200">
+                            {suggestedDailyPace == null ? "Need more data" : `Up to ${suggestedDailyPace.toFixed(1)}% a day`}
+                          </span>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <span className="text-neutral-500">Estimated limit hit</span>
+                          <span className="font-medium text-neutral-200">
+                            {estimatedTimeText}{estimatedDateText ? ` · ${estimatedDateText}` : ""}
+                          </span>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <span className="text-neutral-500">Lead time</span>
+                          <span className="font-medium text-neutral-200">
+                            {formatLeadTime(
+                              predictionTimeline.hitAt,
+                              predictionTimeline.resetAt,
+                              predictionTimeline.hitState,
+                            )}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1382,7 +1458,6 @@ function buildPredictionTimeline(params: {
       endAt: hitAt,
       startUsed: usedNow,
       endUsed: 100,
-      steps: 12,
       easing: "linear",
     });
     addPoint(weeklyResetAt, null, null);
@@ -1400,7 +1475,6 @@ function buildPredictionTimeline(params: {
       endAt: weeklyResetAt,
       startUsed: usedNow,
       endUsed: projectedAtReset,
-      steps: 10,
       easing: "linear",
     });
   }
@@ -1737,35 +1811,22 @@ function addProjectedCurve(params: {
   endAt: number;
   startUsed: number;
   endUsed: number;
-  steps: number;
   easing: "linear" | "easeIn";
 }) {
-  const { addPoint, startAt, endAt, startUsed, endUsed, steps, easing } = params;
+  const { addPoint, startAt, endAt, startUsed, endUsed, easing } = params;
   if (endAt <= startAt) {
     addPoint(startAt, null, clampPct(startUsed));
     return;
   }
 
-  const totalSteps = Math.max(2, steps);
-  for (let i = 0; i <= totalSteps; i += 1) {
-    const t = i / totalSteps;
+  const hourMs = 60 * 60 * 1000;
+  for (let checkedAt = startAt; checkedAt < endAt; checkedAt += hourMs) {
+    const t = (checkedAt - startAt) / (endAt - startAt);
     const eased = easing === "easeIn" ? t * t : t;
-    const checkedAt = Math.round(startAt + (endAt - startAt) * t);
     const usedProjected = clampPct(startUsed + (endUsed - startUsed) * eased);
     addPoint(checkedAt, null, usedProjected);
   }
-}
-
-function getHitLabelLeftPercent(
-  periodStart: number | null,
-  hitAt: number | null,
-  resetAt: number | null,
-): number {
-  if (periodStart == null || hitAt == null || resetAt == null || resetAt <= periodStart) {
-    return 50;
-  }
-  const rawPercent = ((hitAt - periodStart) / (resetAt - periodStart)) * 100;
-  return Math.max(14, Math.min(86, rawPercent));
+  addPoint(endAt, null, clampPct(endUsed));
 }
 
 function formatLeadTime(
