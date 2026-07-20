@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.14-beta
+
+- Redesigned the weekly limit graph around remaining capacity, target pace, actual usage, and a forward trajectory.
+- Added On pace, Speed up, and Slow down states based on remaining capacity versus the target pace.
+- Added hourly trajectory points with precise hover timestamps, and simplified the chart by removing x-axis labels and the historical momentum line.
+
 ## 0.0.12-beta
 
 - Added token-share percentages for every model in the model usage table.
