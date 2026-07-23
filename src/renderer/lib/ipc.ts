@@ -5,6 +5,7 @@ import type {
   CodexResetCreditsResult,
   HistoryRange,
   ModelUsageHeatmapData,
+  ModelUsageHeatmapProgress,
   ModelUsageRange,
   ModelUsageSummary,
   ProviderConfigurationUpdate,
@@ -53,5 +54,13 @@ export const codexPulseApi = {
       return null;
     }
     return window.codexPulse.onUpdateState(listener);
+  },
+  subscribeToModelUsageHeatmapProgress(
+    listener: (progress: ModelUsageHeatmapProgress) => void,
+  ): (() => void) | null {
+    if (!window.codexPulse.onModelUsageHeatmapProgress) {
+      return null;
+    }
+    return window.codexPulse.onModelUsageHeatmapProgress(listener);
   },
 };

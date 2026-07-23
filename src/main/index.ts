@@ -206,7 +206,9 @@ function registerIpc() {
     ),
   );
   ipcMain.handle("codexPulse:getModelUsageHeatmap", async () =>
-    await getAllTimeModelUsageHeatmap(),
+    await getAllTimeModelUsageHeatmap((progress) => {
+      mainWindow?.webContents.send("codexPulse:modelUsageHeatmapProgress", progress);
+    }),
   );
   ipcMain.handle(
     "codexPulse:getCodexResetCredits",

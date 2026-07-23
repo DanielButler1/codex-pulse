@@ -208,3 +208,8 @@ export type ModelUsageHeatmapData = {
   generatedAt: number;
   cells: ModelUsageHeatmapCell[];
 };
+
+export type ModelUsageHeatmapProgress = {
+  processedFiles: number;
+  totalFiles: number;
+};

@@ -5,6 +5,7 @@ import type {
   CodexResetCreditsResult,
   HistoryRange,
   ModelUsageHeatmapData,
+  ModelUsageHeatmapProgress,
   ModelUsageHeatmapCell,
   ModelUsageRange,
   ModelUsageSummary,
@@ -24,6 +25,7 @@ export type {
   CodexResetCreditsResult,
   HistoryRange,
   ModelUsageHeatmapData,
+  ModelUsageHeatmapProgress,
   ModelUsageHeatmapCell,
   ModelUsageRange,
   ModelUsageSummary,
@@ -60,6 +62,7 @@ declare global {
       updateSettings(settings: Partial<AppSettings>): Promise<void>;
       onUpdated?: (listener: () => void) => () => void;
       onUpdateState?: (listener: () => void) => () => void;
+      onModelUsageHeatmapProgress?: (listener: (progress: ModelUsageHeatmapProgress) => void) => () => void;
     };
   }
 }

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type {
   ModelUsageHeatmapData,
+  ModelUsageHeatmapProgress,
   ModelUsageRange,
   ModelUsageRow,
   ModelUsageSummary,
@@ -235,7 +236,9 @@ export async function getModelUsageSummary(
   };
 }
 
-export async function getAllTimeModelUsageHeatmap(): Promise<ModelUsageHeatmapData> {
+export async function getAllTimeModelUsageHeatmap(
+  onProgress?: (progress: ModelUsageHeatmapProgress) => void,
+): Promise<ModelUsageHeatmapData> {
   const generatedAt = Date.now();
   const codexHome = resolveCodexHome();
   const roots = [
@@ -243,12 +246,12 @@ export async function getAllTimeModelUsageHeatmap(): Promise<ModelUsageHeatmapDa
     path.join(codexHome, "archived_sessions"),
   ];
 
+  const files = roots.flatMap((root) => findRolloutFiles(root, 0));
   const heatmapBuckets = new Map<string, HeatmapBucket>();
-  for (const root of roots) {
-    const files = findRolloutFiles(root, 0);
-    for (const filePath of files) {
-      await collectHeatmapUsage(filePath, heatmapBuckets);
-    }
+  onProgress?.({ processedFiles: 0, totalFiles: files.length });
+  for (let index = 0; index < files.length; index += 1) {
+    await collectHeatmapUsage(files[index], heatmapBuckets);
+    onProgress?.({ processedFiles: index + 1, totalFiles: files.length });
   }
 
   return {
@@ -264,24 +267,17 @@ async function collectFileUsage(
   timelineBuckets: Map<number, TimelineBucket>,
   timelineGranularity: TimelineGranularity,
 ) {
-  let content: string;
-  try {
-    content = await fs.promises.readFile(filePath, "utf8");
-  } catch {
-    return;
-  }
-
-  const lines = content.split(/\r?\n/);
   const turnIdToModel = new Map<string, string>();
   const countedTurns = new Set<string>();
   let currentModel = "unknown";
   let previousTotalTokens: TokenTotals | null = null;
 
-  for (let index = 0; index < lines.length; index += 1) {
+  let index = 0;
+  for await (const line of readJsonlLines(filePath)) {
+    index += 1;
     if (index > 0 && index % YIELD_EVERY_LINES === 0) {
       await yieldToEventLoop();
     }
-    const line = lines[index];
     const trimmed = line.trim();
     if (!trimmed) {
       continue;
@@ -359,21 +355,14 @@ async function collectHeatmapUsage(
   filePath: string,
   heatmapBuckets: Map<string, HeatmapBucket>,
 ) {
-  let content: string;
-  try {
-    content = await fs.promises.readFile(filePath, "utf8");
-  } catch {
-    return;
-  }
-
-  const lines = content.split(/\r?\n/);
   let previousTotalTokens: TokenTotals | null = null;
 
-  for (let index = 0; index < lines.length; index += 1) {
+  let index = 0;
+  for await (const line of readJsonlLines(filePath)) {
+    index += 1;
     if (index > 0 && index % YIELD_EVERY_LINES === 0) {
       await yieldToEventLoop();
     }
-    const line = lines[index];
     const trimmed = line.trim();
     if (!trimmed) {
       continue;
@@ -691,25 +680,18 @@ async function collectMonthTotalsFromFile(
   monthStart: number,
   generatedAt: number,
 ): Promise<{ totalTokens: number; estimatedCostUsd: number }> {
-  let content: string;
-  try {
-    content = await fs.promises.readFile(filePath, "utf8");
-  } catch {
-    return { totalTokens: 0, estimatedCostUsd: 0 };
-  }
-
-  const lines = content.split(/\r?\n/);
   const turnIdToModel = new Map<string, string>();
   let currentModel = "unknown";
   let previousTotalTokens: TokenTotals | null = null;
   let totalTokens = 0;
   let estimatedCostUsd = 0;
 
-  for (let index = 0; index < lines.length; index += 1) {
+  let index = 0;
+  for await (const line of readJsonlLines(filePath)) {
+    index += 1;
     if (index > 0 && index % YIELD_EVERY_LINES === 0) {
       await yieldToEventLoop();
     }
-    const line = lines[index];
     const trimmed = line.trim();
     if (!trimmed) {
       continue;
@@ -769,6 +751,19 @@ async function collectMonthTotalsFromFile(
   }
 
   return { totalTokens, estimatedCostUsd };
+}
+
+
+async function* readJsonlLines(filePath: string): AsyncGenerator<string> {
+  let content: string;
+  try {
+    content = await fs.promises.readFile(filePath, "utf8");
+  } catch {
+    return;
+  }
+  for (const line of content.split(/\r?\n/)) {
+    yield line;
+  }
 }
 
 function alignBucketStart(timestampMs: number, granularity: TimelineGranularity): number {
