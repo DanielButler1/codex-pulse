@@ -6,6 +6,7 @@ import type {
   CodexResetCreditsResult,
   HistoryRange,
   ModelUsageHeatmapData,
+  ModelUsageHeatmapProgress,
   ModelUsageRange,
   ModelUsageSummary,
   ProviderConfigurationUpdate,
@@ -81,6 +82,12 @@ const api = {
     const handler = () => listener();
     ipcRenderer.on("codexPulse:updateState", handler);
     return () => ipcRenderer.removeListener("codexPulse:updateState", handler);
+  },
+  onModelUsageHeatmapProgress(listener: (progress: ModelUsageHeatmapProgress) => void): () => void {
+    const handler = (_event: Electron.IpcRendererEvent, progress: ModelUsageHeatmapProgress) =>
+      listener(progress);
+    ipcRenderer.on("codexPulse:modelUsageHeatmapProgress", handler);
+    return () => ipcRenderer.removeListener("codexPulse:modelUsageHeatmapProgress", handler);
   },
 };
 

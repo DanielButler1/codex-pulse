@@ -132,7 +132,6 @@ export class UsageDatabase {
     const row = statement.get();
     return row ? mapRowToSnapshot(row) : null;
   }
-
   getHistory(range: HistoryRange): UsageSnapshot[] {
     const since = Date.now() - RANGE_TO_MS[range];
     return this.getSnapshotsSince(since);

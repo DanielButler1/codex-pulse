@@ -29,12 +29,14 @@ import {
   PROVIDER_IDS,
     type ProviderId,
 } from "../../shared/provider-catalog";
+import { findNextAvailableManualResetAt } from "../../shared/projection-reset";
 import type {
   AppSettings,
   AppStatus,
   AppUpdateState,
   CodexResetCreditsResult,
   ModelUsageHeatmapData,
+  ModelUsageHeatmapProgress,
   ModelUsageRange,
   ModelUsageSummary,
   UsageSnapshot,
@@ -100,6 +102,8 @@ type PaceChartPoint = PredictionTimelinePoint & {
 
 type PaceState = "on_pace" | "slow_down" | "speed_up";
 
+type ProjectionResetSource = "default" | "manual";
+
 type FiveHourLimitWarning = {
   hitAt: number;
   usedPercent: number;
@@ -109,12 +113,16 @@ export default function App() {
   const isDevBuild = import.meta.env.DEV;
   const [showSettings, setShowSettings] = useState(false);
   const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
+  const [projectionResetSource, setProjectionResetSource] =
+    useState<ProjectionResetSource>("default");
   const [modelRange, setModelRange] = useState<ModelUsageRange>("24h");
   const [history, setHistory] = useState<UsageSnapshot[]>([]);
   const [modelUsage, setModelUsage] = useState<ModelUsageSummary | null>(null);
   const [modelHeatmap, setModelHeatmap] = useState<ModelUsageHeatmapData | null>(null);
   const [resetCredits, setResetCredits] = useState<CodexResetCreditsResult | null>(null);
   const [modelHeatmapLoading, setModelHeatmapLoading] = useState(false);
+  const [modelHeatmapProgress, setModelHeatmapProgress] =
+    useState<ModelUsageHeatmapProgress | null>(null);
   const [resetCreditsLoading, setResetCreditsLoading] = useState(false);
   const [latest, setLatest] = useState<UsageSnapshot | null>(null);
   const [status, setStatus] = useState<AppStatus | null>(null);
@@ -123,6 +131,7 @@ export default function App() {
   const [modelUsageLoading, setModelUsageLoading] = useState(false);
   const [updateState, setUpdateState] = useState<AppUpdateState | null>(null);
   const lastModelUsageLoadAtRef = useRef(0);
+  const modelUsageRequestIdRef = useRef(0);
   const modelUsageReferenceRef = useRef<UsageSnapshot | null>(null);
   const resetCreditsRef = useRef<CodexResetCreditsResult | null>(null);
 
@@ -186,6 +195,7 @@ export default function App() {
   }, []);
 
   const loadModelUsage = useCallback(async (range: ModelUsageRange, referenceUsage: UsageSnapshot | null = modelUsageReferenceRef.current) => {
+    const requestId = ++modelUsageRequestIdRef.current;
     setModelUsageLoading(true);
     try {
       const periodStart =
@@ -195,18 +205,27 @@ export default function App() {
             ? resolveSubscriptionPeriodStart(settings.subscriptionLastRenewalDate)
             : null;
       const summary = await codexPulseApi.getModelUsage(range, periodStart);
+      if (requestId !== modelUsageRequestIdRef.current) {
+        return;
+      }
       setModelUsage(summary);
       lastModelUsageLoadAtRef.current = Date.now();
     } catch (error) {
+      if (requestId !== modelUsageRequestIdRef.current) {
+        return;
+      }
       console.error("Failed to load model usage", { range, error });
       setModelUsage(null);
     } finally {
-      setModelUsageLoading(false);
+      if (requestId === modelUsageRequestIdRef.current) {
+        setModelUsageLoading(false);
+      }
     }
   }, [settings.subscriptionLastRenewalDate]);
 
   const loadModelHeatmap = useCallback(async () => {
     setModelHeatmapLoading(true);
+    setModelHeatmapProgress(null);
     try {
       const heatmap = await codexPulseApi.getModelUsageHeatmap();
       setModelHeatmap(heatmap);
@@ -214,6 +233,7 @@ export default function App() {
       setModelHeatmap(null);
     } finally {
       setModelHeatmapLoading(false);
+      setModelHeatmapProgress(null);
     }
   }, []);
 
@@ -283,6 +303,15 @@ export default function App() {
   useEffect(() => {
     void loadModelHeatmap();
   }, [loadModelHeatmap]);
+
+  useEffect(() => {
+    const unsubscribe = codexPulseApi.subscribeToModelUsageHeatmapProgress((progress) => {
+      setModelHeatmapProgress(progress);
+    });
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -417,6 +446,16 @@ export default function App() {
     activeSnapshot?.checkedAt != null && activeSnapshot.secondaryResetAfterSeconds != null
       ? activeSnapshot.checkedAt + activeSnapshot.secondaryResetAfterSeconds * 1000
       : null;
+  const nextManualResetAt = findNextAvailableManualResetAt(resetCredits, Date.now());
+  useEffect(() => {
+    if (projectionResetSource === "manual" && nextManualResetAt == null) {
+      setProjectionResetSource("default");
+    }
+  }, [nextManualResetAt, projectionResetSource]);
+  const projectionResetAt =
+    projectionResetSource === "manual" && nextManualResetAt != null
+      ? nextManualResetAt
+      : weeklyResetAt;
   const primaryResetAt =
     activeSnapshot?.checkedAt != null && activeSnapshot.primaryResetAfterSeconds != null
       ? activeSnapshot.checkedAt + activeSnapshot.primaryResetAfterSeconds * 1000
@@ -435,10 +474,14 @@ export default function App() {
       buildPredictionTimeline({
         history,
         latest,
-        weeklyResetAt,
+        weeklyResetAt: projectionResetAt,
+        periodStartAt:
+          weeklyResetAt != null
+            ? weeklyResetAt - (latest?.secondaryWindowMinutes ?? 7 * 24 * 60) * 60 * 1000
+            : null,
         burnRatePercentPerHour: effectiveBurnRate,
       }),
-    [effectiveBurnRate, history, latest, weeklyResetAt],
+    [effectiveBurnRate, history, latest, projectionResetAt, weeklyResetAt],
   );
 
   const estimatedTimeText =
@@ -455,8 +498,8 @@ export default function App() {
         : "";
   const evenPaceGapText = formatEvenPaceGap(predictionTimeline.evenPaceGap);
   const remainingDays =
-    weeklyResetAt != null && latest != null
-      ? Math.max(0, (weeklyResetAt - latest.checkedAt) / (24 * 60 * 60 * 1000))
+    projectionResetAt != null && latest != null
+      ? Math.max(0, (projectionResetAt - latest.checkedAt) / (24 * 60 * 60 * 1000))
       : null;
   const suggestedDailyPace =
     secondaryRemaining != null && remainingDays != null && remainingDays > 0
@@ -532,7 +575,33 @@ export default function App() {
             </p>
           </div>
         </div>
-        <div className="space-y-2 border-t border-neutral-800 pt-3">
+        <div className="border-t border-neutral-800 px-2 py-3">
+          <label
+            htmlFor="projection-reset-source"
+            className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500"
+          >
+            Projection reset
+          </label>
+          <select
+            id="projection-reset-source"
+            value={projectionResetSource}
+            onChange={(event) =>
+              setProjectionResetSource(event.target.value as ProjectionResetSource)
+            }
+            className="mt-2 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 outline-none transition focus:border-neutral-500"
+          >
+            <option value="default">Default weekly reset</option>
+            <option value="manual" disabled={nextManualResetAt == null}>
+              {nextManualResetAt == null
+                ? "Next available manual reset unavailable"
+                : "Next available manual reset"}
+            </option>
+          </select>
+          <p className="mt-2 text-[11px] leading-4 text-neutral-500">
+            Changes the projected usage graph only.
+          </p>
+        </div>
+        <div className="space-y-2">
           {updateState?.status === "available" ||
           updateState?.status === "downloading" ||
           updateState?.status === "downloaded" ? (
@@ -825,6 +894,11 @@ export default function App() {
                     <UsageSparkline data={windowHistory} />
                   </section>
 
+                  {modelHeatmapLoading && modelHeatmapProgress ? (
+                    <div className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-neutral-400">
+                      Loading historical usage: {modelHeatmapProgress.processedFiles.toLocaleString()} of {modelHeatmapProgress.totalFiles.toLocaleString()} files
+                    </div>
+                  ) : null}
                   <ModelUsageTable
                     summary={modelUsage}
                     heatmap={modelHeatmap}
@@ -835,7 +909,6 @@ export default function App() {
                     onRangeChange={onModelRangeChange}
                     onOpenSettings={onOpenSettings}
                   />
-
                   <ResetCreditsSection
                     resetCredits={resetCredits}
                     loading={resetCreditsLoading}
@@ -1375,9 +1448,10 @@ function buildPredictionTimeline(params: {
   history: UsageSnapshot[];
   latest: UsageSnapshot | null;
   weeklyResetAt: number | null;
+  periodStartAt?: number | null;
   burnRatePercentPerHour: number | null;
 }): PredictionTimeline {
-  const { history, latest, weeklyResetAt, burnRatePercentPerHour } = params;
+  const { history, latest, weeklyResetAt, periodStartAt, burnRatePercentPerHour } = params;
   if (!latest || weeklyResetAt == null || latest.secondaryUsedPercent == null) {
     return {
       periodStart: null,
@@ -1394,7 +1468,7 @@ function buildPredictionTimeline(params: {
 
   const usedNow = clampPct(latest.secondaryUsedPercent);
   const periodMinutes = latest.secondaryWindowMinutes ?? 7 * 24 * 60;
-  const periodStart = weeklyResetAt - periodMinutes * 60 * 1000;
+  const periodStart = periodStartAt ?? weeklyResetAt - periodMinutes * 60 * 1000;
   const evenPaceUsedNow = calculateEvenPaceUsed(latest.checkedAt, periodStart, weeklyResetAt);
   const evenPaceGap = usedNow - evenPaceUsedNow;
 

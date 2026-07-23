@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.15-beta
+
+- Added a graph-only projection reset selector for the default weekly reset or next available manual reset.
+- Kept the reported rate-limit reset card unchanged when adjusting the projection horizon.
+- Kept model-usage period switching available while usage data loads.
+- Restored launch-time historical processing so the dashboard does not wait for a database backfill.
+
 ## 0.0.14-beta
 
 - Redesigned the weekly limit graph around remaining capacity, target pace, actual usage, and a forward trajectory.

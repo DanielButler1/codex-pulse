@@ -204,7 +204,6 @@ export function ModelUsageTable({
                   : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:border-neutral-500"
               }`}
               type="button"
-              disabled={loading}
               onClick={() => onRangeChange(candidate.value)}
             >
               {candidate.label}
