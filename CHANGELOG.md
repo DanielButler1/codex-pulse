@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.16-beta
+
+- Added a custom reset date/time option for the projection graph.
+- Kept custom projection resets isolated from the reported rate-limit reset card.
+
 ## 0.0.15-beta
 
 - Added a graph-only projection reset selector for the default weekly reset or next available manual reset.
