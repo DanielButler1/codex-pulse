@@ -102,7 +102,7 @@ type PaceChartPoint = PredictionTimelinePoint & {
 
 type PaceState = "on_pace" | "slow_down" | "speed_up";
 
-type ProjectionResetSource = "default" | "manual";
+type ProjectionResetSource = "default" | "manual" | "custom";
 
 type FiveHourLimitWarning = {
   hitAt: number;
@@ -115,6 +115,7 @@ export default function App() {
   const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
   const [projectionResetSource, setProjectionResetSource] =
     useState<ProjectionResetSource>("default");
+  const [customProjectionReset, setCustomProjectionReset] = useState("");
   const [modelRange, setModelRange] = useState<ModelUsageRange>("24h");
   const [history, setHistory] = useState<UsageSnapshot[]>([]);
   const [modelUsage, setModelUsage] = useState<ModelUsageSummary | null>(null);
@@ -447,6 +448,9 @@ export default function App() {
       ? activeSnapshot.checkedAt + activeSnapshot.secondaryResetAfterSeconds * 1000
       : null;
   const nextManualResetAt = findNextAvailableManualResetAt(resetCredits, Date.now());
+  const customProjectionResetAt = customProjectionReset
+    ? new Date(customProjectionReset).getTime()
+    : null;
   useEffect(() => {
     if (projectionResetSource === "manual" && nextManualResetAt == null) {
       setProjectionResetSource("default");
@@ -455,7 +459,11 @@ export default function App() {
   const projectionResetAt =
     projectionResetSource === "manual" && nextManualResetAt != null
       ? nextManualResetAt
-      : weeklyResetAt;
+      : projectionResetSource === "custom" &&
+          customProjectionResetAt != null &&
+          customProjectionResetAt > (latest?.checkedAt ?? Date.now())
+        ? customProjectionResetAt
+        : weeklyResetAt;
   const primaryResetAt =
     activeSnapshot?.checkedAt != null && activeSnapshot.primaryResetAfterSeconds != null
       ? activeSnapshot.checkedAt + activeSnapshot.primaryResetAfterSeconds * 1000
@@ -596,7 +604,17 @@ export default function App() {
                 ? "Next available manual reset unavailable"
                 : "Next available manual reset"}
             </option>
+            <option value="custom">Custom reset date/time</option>
           </select>
+          {projectionResetSource === "custom" ? (
+            <input
+              type="datetime-local"
+              aria-label="Custom projection reset date and time"
+              value={customProjectionReset}
+              onChange={(event) => setCustomProjectionReset(event.target.value)}
+              className="mt-2 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 outline-none transition focus:border-neutral-500"
+            />
+          ) : null}
           <p className="mt-2 text-[11px] leading-4 text-neutral-500">
             Changes the projected usage graph only.
           </p>
