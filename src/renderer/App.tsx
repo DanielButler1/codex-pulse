@@ -461,7 +461,7 @@ export default function App() {
       ? nextManualResetAt
       : projectionResetSource === "custom" &&
           customProjectionResetAt != null &&
-          customProjectionResetAt > (latest?.checkedAt ?? Date.now())
+          Number.isFinite(customProjectionResetAt)
         ? customProjectionResetAt
         : weeklyResetAt;
   const primaryResetAt =

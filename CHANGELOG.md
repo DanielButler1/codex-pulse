@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.17-beta
+
+- Fixed custom projection reset datetimes falling back to the weekly reset instead of updating the graph.
+
 ## 0.0.16-beta
 
 - Added a custom reset date/time option for the projection graph.
