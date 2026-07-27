@@ -43,6 +43,15 @@ h1 { font-size:clamp(42px, 6vw, 84px); line-height:.93; letter-spacing:-.075em; 
 .notice { margin-top:20px; padding:14px; background:#fff0e7; border-radius:12px; color:#8a4c37; font-size:12px; line-height:1.45; }
 .provider { display:flex; justify-content:space-between; padding:14px 0; border-bottom:1px solid var(--line); font-size:13px; }
 .provider:last-child { border:0; }
+.manual-summary { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:28px; }
+.manual-summary > div { border:1px solid var(--line); border-radius:14px; padding:18px; display:flex; justify-content:space-between; align-items:end; gap:14px; }
+.manual-summary span, .reset-input span { color:var(--muted); font-size:12px; }
+.manual-summary strong { font:500 22px 'DM Mono', monospace; }
+input { width:120px; border:1px solid var(--line); border-radius:9px; background:#fbfcf5; color:var(--ink); padding:9px 10px; font:500 12px 'DM Mono', monospace; }
+.reset-input { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.reset-input input { width:190px; }
+.save { border:0; border-radius:99px; padding:10px 15px; background:var(--ink); color:var(--lime); cursor:pointer; font-size:12px; justify-self:start; }
+.pill { border:0; cursor:pointer; }
 .pill { font:500 10px 'DM Mono', monospace; border-radius:99px; padding:5px 8px; background:#e6f3d9; color:#397243; }
 .pill.off { background:#f0eee7; color:var(--muted); }
 .empty { color:var(--muted); font-size:13px; line-height:1.55; }
