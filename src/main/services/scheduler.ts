@@ -1,5 +1,6 @@
 import type { AppSettings, AppStatus, UsageSnapshot } from "../../../shared/types";
 import { normalizeCodexLimitWindows } from "../../../shared/codex-limit-windows";
+import { DAY_MS, USAGE_SNAPSHOT_RETENTION_MS } from "../../../shared/retention";
 import type { UsageDatabase } from "../db";
 import { calculateBurnRates, estimateLimitHit } from "./predictor";
 import { CodexUsageService } from "./codex-usage";
@@ -15,8 +16,6 @@ type SchedulerDeps = {
   onUpdate?: (snapshot: UsageSnapshot | null, status: AppStatus) => void;
 };
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-const RETENTION_MS = 30 * DAY_MS;
 const FAILURE_BACKOFF_SECONDS = 5 * 60;
 const FAILURE_BACKOFF_THRESHOLD = 3;
 const FIXED_POLL_SECONDS = 60;
@@ -219,7 +218,7 @@ export class UsageScheduler {
     if (Date.now() - this.lastCleanupAt < DAY_MS) {
       return;
     }
-    this.db.cleanupOlderThan(Date.now() - RETENTION_MS);
+    this.db.cleanupOlderThan(Date.now() - USAGE_SNAPSHOT_RETENTION_MS);
     this.lastCleanupAt = Date.now();
   }
 

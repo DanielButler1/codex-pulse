@@ -1,4 +1,14 @@
 import type { UsageEfficiencySummary } from "../lib/types";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 type Props = {
   summary: UsageEfficiencySummary | null;
@@ -11,12 +21,13 @@ export function UsageEfficiencyPanel({ summary, loading }: Props) {
   }
 
   const usableWeeks = summary?.weeks.filter((week) => week.tokensPerPercent != null) ?? [];
+  const chartWeeks = [...usableWeeks].sort((a, b) => a.resetAt - b.resetAt);
   return (
     <div className="space-y-5">
       <section>
         <h2 className="text-2xl font-semibold">Usage efficiency</h2>
         <p className="mt-1 text-sm text-neutral-400">
-          Observed rollout tokens per weekly usage percentage point over the retained 30-day history.
+          Observed rollout tokens per weekly usage percentage point over retained history.
         </p>
       </section>
 
@@ -28,6 +39,51 @@ export function UsageEfficiencyPanel({ summary, loading }: Props) {
           value={summary ? capitalize(summary.confidence) : "Not enough data"}
           detail={summary ? `${formatPercent(summary.observedUsagePercent)} observed across ${usableWeeks.length} ${usableWeeks.length === 1 ? "week" : "weeks"}` : undefined}
         />
+      </section>
+
+      <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
+        <h3 className="text-lg font-semibold">Estimated weekly tokens over time</h3>
+        <p className="mt-1 text-sm text-neutral-400">
+          Projected 100% allowance for each observed reset window. Usage snapshots are retained for one year.
+        </p>
+        {chartWeeks.length === 0 ? (
+          <p className="mt-5 text-sm text-neutral-400">Not enough weekly observations to chart yet.</p>
+        ) : (
+          <div className="mt-5 h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartWeeks} margin={{ top: 12, right: 12, left: 8, bottom: 4 }}>
+                <CartesianGrid stroke="#2b2b2b" strokeDasharray="3 5" vertical={false} />
+                <XAxis
+                  dataKey="resetAt"
+                  tickFormatter={formatShortDate}
+                  stroke="#737373"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fill: "#a3a3a3", fontSize: 12 }}
+                />
+                <YAxis
+                  domain={[0, "auto"]}
+                  tickFormatter={formatCompactTokens}
+                  stroke="#737373"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fill: "#a3a3a3", fontSize: 12 }}
+                  width={58}
+                />
+                <Tooltip
+                  cursor={{ fill: "#262626" }}
+                  contentStyle={{ backgroundColor: "#181818", border: "1px solid #525252", borderRadius: "0.5rem", color: "#f5f5f5" }}
+                  formatter={(value: unknown) => [formatTokens(typeof value === "number" ? value : Number(value)), "Estimated weekly tokens"]}
+                  labelFormatter={(value: unknown) => `Resets ${formatDateTime(Number(value))}`}
+                />
+                {summary?.projectedWeeklyTokens != null ? (
+                  <ReferenceLine y={summary.projectedWeeklyTokens} stroke="#a3a3a3" strokeDasharray="4 4" />
+                ) : null}
+                <Bar dataKey="projectedWeeklyTokens" fill="#4f8cff" radius={[5, 5, 0, 0]} maxBarSize={72} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
@@ -95,6 +151,14 @@ function formatPercent(value: number): string {
 
 function formatDateTime(value: number): string {
   return new Date(value).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+function formatShortDate(value: number): string {
+  return new Date(value).toLocaleDateString([], { day: "numeric", month: "short" });
+}
+
+function formatCompactTokens(value: number): string {
+  return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 0 }).format(value);
 }
 
 function capitalize(value: string): string {
