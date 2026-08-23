@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.19-beta
+
+- Fixed beta update discovery by publishing channel-specific update manifests.
+- Show the dashboard after normal and updater relaunches while keeping login launches hidden.
+
 ## 0.0.18-beta
 
 - Added a dedicated Usage efficiency tab with observed tokens per weekly usage percentage and projected weekly token capacity.
