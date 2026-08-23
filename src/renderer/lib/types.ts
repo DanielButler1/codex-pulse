@@ -16,6 +16,7 @@ import type {
   ProviderSecretFlags,
   ProviderUsageResult,
   UsageSnapshot,
+  UsageEfficiencySummary,
 } from "../../../shared/types";
 
 export type {
@@ -36,6 +37,7 @@ export type {
   ProviderSecretFlags,
   ProviderUsageResult,
   UsageSnapshot,
+  UsageEfficiencySummary,
 };
 
 declare global {
@@ -46,6 +48,7 @@ declare global {
       getModelUsage(range: ModelUsageRange, periodStart?: number | null): Promise<ModelUsageSummary>;
       getModelUsageHeatmap(): Promise<ModelUsageHeatmapData>;
       cancelModelUsage(): Promise<void>;
+      getUsageEfficiency(): Promise<UsageEfficiencySummary>;
       getCodexResetCredits(forceRefresh?: boolean): Promise<CodexResetCreditsResult>;
       getProviderUsage(providerId: string): Promise<ProviderUsageResult>;
       getProviderConfig(providerId: string): Promise<ProviderConfigurationView>;

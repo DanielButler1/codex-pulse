@@ -23,6 +23,7 @@ export const codexPulseApi = {
   getModelUsageHeatmap: (): Promise<ModelUsageHeatmapData> =>
     window.codexPulse.getModelUsageHeatmap(),
   cancelModelUsage: (): Promise<void> => window.codexPulse.cancelModelUsage(),
+  getUsageEfficiency: () => window.codexPulse.getUsageEfficiency(),
   getCodexResetCredits: (forceRefresh = false): Promise<CodexResetCreditsResult> =>
     window.codexPulse.getCodexResetCredits(forceRefresh),
   getProviderUsage: (providerId: string): Promise<ProviderUsageResult> =>
