@@ -56,7 +56,15 @@ export function calculateUsageEfficiency(
     });
   }
   weeks.sort((a, b) => b.resetAt - a.resetAt);
-  const usable = weeks.filter((week) => week.tokensPerPercent != null);
+  return summarizeUsageEfficiency(weeks, generatedAt);
+}
+
+export function summarizeUsageEfficiency(
+  weeks: UsageEfficiencyWeek[],
+  generatedAt = Date.now(),
+): UsageEfficiencySummary {
+  const ordered = [...weeks].sort((a, b) => b.resetAt - a.resetAt);
+  const usable = ordered.filter((week) => week.tokensPerPercent != null);
   const observedUsagePercent = usable.reduce((sum, week) => sum + week.observedUsagePercent, 0);
   const totalTokens = usable.reduce((sum, week) => sum + week.totalTokens, 0);
   const tokensPerPercent = observedUsagePercent > 0 ? totalTokens / observedUsagePercent : null;
@@ -73,6 +81,6 @@ export function calculateUsageEfficiency(
     observedUsagePercent,
     totalTokens,
     confidence,
-    weeks,
+    weeks: ordered,
   };
 }

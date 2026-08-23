@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateUsageEfficiency } from "../src/main/services/usage-efficiency.ts";
+import { calculateUsageEfficiency, summarizeUsageEfficiency } from "../src/main/services/usage-efficiency.ts";
 import type { ModelUsageRollup } from "../src/main/db.ts";
 import type { UsageSnapshot } from "./types.ts";
 
@@ -32,6 +32,36 @@ test("ignores usage drops when estimating efficiency", () => {
   }], resetAt - 1_000);
   assert.equal(result.observedUsagePercent, 2);
   assert.equal(result.tokensPerPercent, 200);
+});
+
+test("summarizes persisted weekly estimates in reverse chronological order", () => {
+  const result = summarizeUsageEfficiency([
+    {
+      resetAt: 1,
+      observedFrom: 0,
+      observedTo: 1,
+      observedUsagePercent: 10,
+      totalTokens: 1_000,
+      tokensPerPercent: 100,
+      projectedWeeklyTokens: 10_000,
+      observations: 2,
+    },
+    {
+      resetAt: 2,
+      observedFrom: 1,
+      observedTo: 2,
+      observedUsagePercent: 20,
+      totalTokens: 4_000,
+      tokensPerPercent: 200,
+      projectedWeeklyTokens: 20_000,
+      observations: 3,
+    },
+  ], 3);
+
+  assert.deepEqual(result.weeks.map((week) => week.resetAt), [2, 1]);
+  assert.equal(result.tokensPerPercent, 5_000 / 30);
+  assert.equal(result.projectedWeeklyTokens, (5_000 / 30) * 100);
+  assert.equal(result.generatedAt, 3);
 });
 
 function snapshot(checkedAt: number, resetAt: number, used: number): UsageSnapshot {

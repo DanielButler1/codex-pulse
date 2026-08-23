@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { normalizeCodexLimitWindows } from "../../shared/codex-limit-windows";
-import type { HistoryRange, UsageSnapshot } from "../../shared/types";
+import type { HistoryRange, UsageEfficiencyWeek, UsageSnapshot } from "../../shared/types";
 import { filterTransientLimitDrops } from "./services/snapshot-validation";
 
 type SnapshotRow = {
@@ -49,6 +49,17 @@ type ModelUsageRollupRow = {
   reasoning_output_tokens: number;
   total_tokens: number;
   estimated_cost_usd: number;
+};
+
+type UsageEfficiencyWeekRow = {
+  reset_at: number;
+  observed_from: number;
+  observed_to: number;
+  observed_usage_percent: number;
+  total_tokens: number;
+  tokens_per_percent: number | null;
+  projected_weekly_tokens: number | null;
+  observations: number;
 };
 
 const RANGE_TO_MS: Record<HistoryRange, number> = {
@@ -137,6 +148,18 @@ export class UsageDatabase {
       CREATE TABLE IF NOT EXISTS model_usage_metadata (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS usage_efficiency_weeks (
+        reset_at INTEGER PRIMARY KEY,
+        observed_from INTEGER NOT NULL,
+        observed_to INTEGER NOT NULL,
+        observed_usage_percent REAL NOT NULL,
+        total_tokens INTEGER NOT NULL,
+        tokens_per_percent REAL,
+        projected_weekly_tokens REAL,
+        observations INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
       );
     `);
     this.db.pragma("foreign_keys = ON");
@@ -341,6 +364,54 @@ export class UsageDatabase {
       reasoningOutputTokens: row.reasoning_output_tokens,
       totalTokens: row.total_tokens,
       estimatedCostUsd: row.estimated_cost_usd,
+    }));
+  }
+
+  upsertUsageEfficiencyWeeks(weeks: UsageEfficiencyWeek[]): void {
+    const statement = this.db.prepare(`
+      INSERT INTO usage_efficiency_weeks (
+        reset_at, observed_from, observed_to, observed_usage_percent, total_tokens,
+        tokens_per_percent, projected_weekly_tokens, observations, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(reset_at) DO UPDATE SET
+        observed_from = excluded.observed_from,
+        observed_to = excluded.observed_to,
+        observed_usage_percent = excluded.observed_usage_percent,
+        total_tokens = excluded.total_tokens,
+        tokens_per_percent = excluded.tokens_per_percent,
+        projected_weekly_tokens = excluded.projected_weekly_tokens,
+        observations = excluded.observations,
+        updated_at = excluded.updated_at
+      WHERE excluded.reset_at > usage_efficiency_weeks.updated_at
+    `);
+    const transaction = this.db.transaction(() => {
+      for (const week of weeks) {
+        statement.run(
+          week.resetAt, week.observedFrom, week.observedTo, week.observedUsagePercent,
+          week.totalTokens, week.tokensPerPercent, week.projectedWeeklyTokens,
+          week.observations, Date.now(),
+        );
+      }
+    });
+    transaction();
+  }
+
+  getUsageEfficiencyWeeks(): UsageEfficiencyWeek[] {
+    const rows = this.db.prepare<unknown[], UsageEfficiencyWeekRow>(`
+      SELECT reset_at, observed_from, observed_to, observed_usage_percent, total_tokens,
+        tokens_per_percent, projected_weekly_tokens, observations
+      FROM usage_efficiency_weeks
+      ORDER BY reset_at DESC
+    `).all();
+    return rows.map((row) => ({
+      resetAt: row.reset_at,
+      observedFrom: row.observed_from,
+      observedTo: row.observed_to,
+      observedUsagePercent: row.observed_usage_percent,
+      totalTokens: row.total_tokens,
+      tokensPerPercent: row.tokens_per_percent,
+      projectedWeeklyTokens: row.projected_weekly_tokens,
+      observations: row.observations,
     }));
   }
 
