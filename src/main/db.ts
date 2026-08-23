@@ -69,6 +69,20 @@ export class UsageDatabase {
   }
 
   private migrate() {
+    const existingRollupColumns = this.db
+      .prepare<unknown[], { name: string }>("PRAGMA table_info(model_usage_rollups)")
+      .all();
+    if (
+      existingRollupColumns.length > 0 &&
+      (!existingRollupColumns.some((column) => column.name === "file_path") ||
+        !existingRollupColumns.some((column) => column.name === "bucket_start"))
+    ) {
+      // Older betas stored one disposable JSON cache row under this table name.
+      // Raw rollout logs remain the source of truth, so rebuild the derived cache
+      // without touching usage_snapshots or settings.
+      this.db.exec("DROP TABLE model_usage_rollups");
+    }
+
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS usage_snapshots (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
