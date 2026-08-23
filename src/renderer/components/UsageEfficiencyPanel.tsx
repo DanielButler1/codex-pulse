@@ -32,19 +32,27 @@ export function UsageEfficiencyPanel({ summary, loading }: Props) {
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Tokens per 1%" value={formatTokens(summary?.tokensPerPercent)} />
-        <MetricCard label="Estimated weekly tokens" value={formatTokens(summary?.projectedWeeklyTokens)} />
+        <MetricCard
+          label="Tokens per 1%"
+          value={formatTokens(summary?.tokensPerPercent)}
+          detail="Raw token movement paired with weekly usage movement"
+        />
+        <MetricCard
+          label="Estimated weekly tokens"
+          value={formatTokens(summary?.projectedWeeklyTokens)}
+          detail={summary ? `Weighted across ${summary.estimateWeeks} recent validated ${summary.estimateWeeks === 1 ? "window" : "windows"}` : undefined}
+        />
         <MetricCard
           label="Estimate confidence"
           value={summary ? capitalize(summary.confidence) : "Not enough data"}
-          detail={summary ? `${formatPercent(summary.observedUsagePercent)} observed across ${usableWeeks.length} ${usableWeeks.length === 1 ? "week" : "weeks"}` : undefined}
+          detail={summary ? `${formatPercent(summary.observedUsagePercent)} paired usage across ${summary.estimateWeeks} recent ${summary.estimateWeeks === 1 ? "window" : "windows"}` : undefined}
         />
       </section>
 
       <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
         <h3 className="text-lg font-semibold">Estimated weekly tokens over time</h3>
         <p className="mt-1 text-sm text-neutral-400">
-          Projected 100% allowance for each observed reset window. Usage snapshots are retained for one year.
+          Projected 100% allowance from non-overlapping weekly reset windows. Usage snapshots are retained for one year.
         </p>
         {chartWeeks.length === 0 ? (
           <p className="mt-5 text-sm text-neutral-400">Not enough weekly observations to chart yet.</p>
@@ -90,7 +98,7 @@ export function UsageEfficiencyPanel({ summary, loading }: Props) {
         <div>
           <h3 className="text-lg font-semibold">Weekly observations</h3>
           <p className="mt-1 text-sm text-neutral-400">
-            Resets and reported usage drops are excluded. Estimates become more reliable as more percentage movement is observed.
+            Only non-overlapping seven-day limit windows with at least 5% forward movement are included.
           </p>
         </div>
         {usableWeeks.length === 0 ? (

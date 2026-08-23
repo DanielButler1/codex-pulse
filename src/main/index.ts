@@ -28,7 +28,7 @@ import { ProviderSecretsStore } from "./services/provider-secrets";
 import { getAllTimeModelUsageHeatmap, getModelUsageSummary } from "./services/model-usage";
 import { updateModelUsageRollups } from "./services/model-usage-index";
 import { calculateUsageEfficiency, summarizeUsageEfficiency } from "./services/usage-efficiency";
-import { USAGE_SNAPSHOT_RETENTION_MS } from "../../shared/retention";
+import { DAY_MS, USAGE_SNAPSHOT_RETENTION_MS } from "../../shared/retention";
 import { CodexUsageService } from "./services/codex-usage";
 import { fetchCodexResetCredits } from "./services/codex-reset-credits";
 import { UsageScheduler } from "./services/scheduler";
@@ -235,7 +235,7 @@ function registerIpc() {
       db.getLimitHistorySince(since),
       db.getModelUsageRollupsSince(since),
     );
-    db.upsertUsageEfficiencyWeeks(current.weeks);
+    db.replaceUsageEfficiencyWeeks(current.weeks, since + 7 * DAY_MS);
     return summarizeUsageEfficiency(db.getUsageEfficiencyWeeks());
   });
   ipcMain.handle(

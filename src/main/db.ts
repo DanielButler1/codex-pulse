@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { normalizeCodexLimitWindows } from "../../shared/codex-limit-windows";
+import { USAGE_EFFICIENCY_CALCULATION_VERSION } from "../../shared/retention";
 import type { HistoryRange, UsageEfficiencyWeek, UsageSnapshot } from "../../shared/types";
 import { filterTransientLimitDrops } from "./services/snapshot-validation";
 
@@ -159,9 +160,16 @@ export class UsageDatabase {
         tokens_per_percent REAL,
         projected_weekly_tokens REAL,
         observations INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
+        updated_at INTEGER NOT NULL,
+        calculation_version INTEGER NOT NULL DEFAULT 2
       );
     `);
+    const efficiencyColumns = this.db
+      .prepare<unknown[], { name: string }>("PRAGMA table_info(usage_efficiency_weeks)")
+      .all();
+    if (!efficiencyColumns.some((column) => column.name === "calculation_version")) {
+      this.db.exec("ALTER TABLE usage_efficiency_weeks ADD COLUMN calculation_version INTEGER NOT NULL DEFAULT 1");
+    }
     this.db.pragma("foreign_keys = ON");
   }
 
@@ -367,12 +375,12 @@ export class UsageDatabase {
     }));
   }
 
-  upsertUsageEfficiencyWeeks(weeks: UsageEfficiencyWeek[]): void {
+  replaceUsageEfficiencyWeeks(weeks: UsageEfficiencyWeek[], recalculationCutoff: number): void {
     const statement = this.db.prepare(`
       INSERT INTO usage_efficiency_weeks (
         reset_at, observed_from, observed_to, observed_usage_percent, total_tokens,
-        tokens_per_percent, projected_weekly_tokens, observations, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        tokens_per_percent, projected_weekly_tokens, observations, updated_at, calculation_version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(reset_at) DO UPDATE SET
         observed_from = excluded.observed_from,
         observed_to = excluded.observed_to,
@@ -381,15 +389,21 @@ export class UsageDatabase {
         tokens_per_percent = excluded.tokens_per_percent,
         projected_weekly_tokens = excluded.projected_weekly_tokens,
         observations = excluded.observations,
-        updated_at = excluded.updated_at
-      WHERE excluded.reset_at > usage_efficiency_weeks.updated_at
+        updated_at = excluded.updated_at,
+        calculation_version = excluded.calculation_version
+      WHERE usage_efficiency_weeks.calculation_version != excluded.calculation_version
+        OR excluded.reset_at > usage_efficiency_weeks.updated_at
     `);
     const transaction = this.db.transaction(() => {
+      this.db.prepare(`
+        DELETE FROM usage_efficiency_weeks
+        WHERE calculation_version = ? AND reset_at >= ?
+      `).run(USAGE_EFFICIENCY_CALCULATION_VERSION, recalculationCutoff);
       for (const week of weeks) {
         statement.run(
           week.resetAt, week.observedFrom, week.observedTo, week.observedUsagePercent,
           week.totalTokens, week.tokensPerPercent, week.projectedWeeklyTokens,
-          week.observations, Date.now(),
+          week.observations, Date.now(), USAGE_EFFICIENCY_CALCULATION_VERSION,
         );
       }
     });
@@ -397,12 +411,13 @@ export class UsageDatabase {
   }
 
   getUsageEfficiencyWeeks(): UsageEfficiencyWeek[] {
-    const rows = this.db.prepare<unknown[], UsageEfficiencyWeekRow>(`
+    const rows = this.db.prepare<[number], UsageEfficiencyWeekRow>(`
       SELECT reset_at, observed_from, observed_to, observed_usage_percent, total_tokens,
         tokens_per_percent, projected_weekly_tokens, observations
       FROM usage_efficiency_weeks
+      WHERE calculation_version = ?
       ORDER BY reset_at DESC
-    `).all();
+    `).all(USAGE_EFFICIENCY_CALCULATION_VERSION);
     return rows.map((row) => ({
       resetAt: row.reset_at,
       observedFrom: row.observed_from,

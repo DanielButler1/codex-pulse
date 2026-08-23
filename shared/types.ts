@@ -234,5 +234,6 @@ export type UsageEfficiencySummary = {
   observedUsagePercent: number;
   totalTokens: number;
   confidence: "low" | "medium" | "high";
+  estimateWeeks: number;
   weeks: UsageEfficiencyWeek[];
 };
