@@ -215,3 +215,24 @@ export type ModelUsageHeatmapProgress = {
   processedFiles: number;
   totalFiles: number;
 };
+
+export type UsageEfficiencyWeek = {
+  resetAt: number;
+  observedFrom: number;
+  observedTo: number;
+  observedUsagePercent: number;
+  totalTokens: number;
+  tokensPerPercent: number | null;
+  projectedWeeklyTokens: number | null;
+  observations: number;
+};
+
+export type UsageEfficiencySummary = {
+  generatedAt: number;
+  tokensPerPercent: number | null;
+  projectedWeeklyTokens: number | null;
+  observedUsagePercent: number;
+  totalTokens: number;
+  confidence: "low" | "medium" | "high";
+  weeks: UsageEfficiencyWeek[];
+};

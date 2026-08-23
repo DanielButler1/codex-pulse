@@ -11,8 +11,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { AlertTriangle, BarChart3, Download, Gauge, RefreshCw, Settings2 } from "lucide-react";
+import { AlertTriangle, BarChart3, Download, Gauge, RefreshCw, Settings2, TrendingUp } from "lucide-react";
 import { ModelUsageTable } from "./components/ModelUsageTable";
+import { UsageEfficiencyPanel } from "./components/UsageEfficiencyPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { StatusBar } from "./components/StatusBar";
 import {
@@ -40,6 +41,7 @@ import type {
   ModelUsageRange,
   ModelUsageSummary,
   UsageSnapshot,
+  UsageEfficiencySummary,
 } from "./lib/types";
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -105,7 +107,7 @@ type PaceChartPoint = PredictionTimelinePoint & {
 type PaceState = "on_pace" | "slow_down" | "speed_up";
 
 type ProjectionResetSource = "default" | "manual" | "custom";
-type DashboardTab = "overview" | "models";
+type DashboardTab = "overview" | "models" | "efficiency";
 
 type FiveHourLimitWarning = {
   hitAt: number;
@@ -130,6 +132,8 @@ export default function App() {
   const [history, setHistory] = useState<UsageSnapshot[]>([]);
   const [modelUsage, setModelUsage] = useState<ModelUsageSummary | null>(null);
   const [modelHeatmap, setModelHeatmap] = useState<ModelUsageHeatmapData | null>(null);
+  const [usageEfficiency, setUsageEfficiency] = useState<UsageEfficiencySummary | null>(null);
+  const [usageEfficiencyLoading, setUsageEfficiencyLoading] = useState(false);
   const [resetCredits, setResetCredits] = useState<CodexResetCreditsResult | null>(null);
   const [modelHeatmapLoading, setModelHeatmapLoading] = useState(false);
   const [modelHeatmapProgress, setModelHeatmapProgress] =
@@ -254,6 +258,19 @@ export default function App() {
     }
   }, []);
 
+  const loadUsageEfficiency = useCallback(async () => {
+    setUsageEfficiencyLoading(true);
+    try {
+      setUsageEfficiency(await codexPulseApi.getUsageEfficiency());
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        console.error("Failed to load usage efficiency", error);
+      }
+    } finally {
+      setUsageEfficiencyLoading(false);
+    }
+  }, []);
+
   const handleUpdateAction = useCallback(async () => {
     if (updateState?.status === "downloaded") {
       await codexPulseApi.installUpdate();
@@ -275,7 +292,6 @@ export default function App() {
 
   useEffect(() => {
     if (activeTab !== "models") {
-      void codexPulseApi.cancelModelUsage();
       return;
     }
     if (modelRange === "period") {
@@ -332,6 +348,15 @@ export default function App() {
   }, [activeTab, loadModelHeatmap]);
 
   useEffect(() => {
+    if (activeTab === "efficiency" && !showSettings) {
+      void loadUsageEfficiency();
+    }
+    if (activeTab === "overview" || showSettings) {
+      void codexPulseApi.cancelModelUsage();
+    }
+  }, [activeTab, loadUsageEfficiency, showSettings]);
+
+  useEffect(() => {
     const unsubscribe = codexPulseApi.subscribeToModelUsageHeatmapProgress((progress) => {
       setModelHeatmapProgress(progress);
     });
@@ -358,6 +383,7 @@ export default function App() {
       ) {
         void loadModelUsage(modelRange);
       }
+      if (activeTab === "efficiency") void loadUsageEfficiency();
     });
     return () => {
       clearInterval(interval);
@@ -367,6 +393,7 @@ export default function App() {
     load,
     activeTab,
     loadModelUsage,
+    loadUsageEfficiency,
     loadResetCredits,
     loadSettings,
     loadUpdateState,
@@ -421,6 +448,7 @@ export default function App() {
             : loadModelUsage(modelRange),
         );
       }
+      if (activeTab === "efficiency") refreshes.push(loadUsageEfficiency());
       await Promise.all(refreshes);
     } catch (error) {
       console.error("Failed to refresh usage", error);
@@ -428,7 +456,7 @@ export default function App() {
         console.error("Failed to reload usage after refresh error", loadError);
       });
     }
-  }, [activeTab, load, loadModelHeatmap, loadModelUsage, loadResetCredits, modelRange]);
+  }, [activeTab, load, loadModelHeatmap, loadModelUsage, loadResetCredits, loadUsageEfficiency, modelRange]);
 
   const onModelRangeChange = useCallback(
     (range: ModelUsageRange) => {
@@ -632,6 +660,14 @@ export default function App() {
           >
             <BarChart3 className="h-4 w-4" />
             <span>Model usage</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab("efficiency"); setShowSettings(false); }}
+            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeTab === "efficiency" && !showSettings ? "bg-neutral-800 text-white" : "text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200"}`}
+          >
+            <TrendingUp className="h-4 w-4" />
+            <span>Usage efficiency</span>
           </button>
         </div>
         <div className="border-t border-neutral-800 px-2 py-3">
@@ -984,7 +1020,7 @@ export default function App() {
                     loading={resetCreditsLoading}
                   />
                 </>
-              ) : (
+              ) : activeTab === "models" ? (
                 <>
 
                   {modelHeatmapLoading && modelHeatmapProgress ? (
@@ -1003,6 +1039,8 @@ export default function App() {
                     onOpenSettings={onOpenSettings}
                   />
                 </>
+              ) : (
+                <UsageEfficiencyPanel summary={usageEfficiency} loading={usageEfficiencyLoading} />
               )}
             </>
           )}

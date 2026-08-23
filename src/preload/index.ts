@@ -9,6 +9,7 @@ import type {
   ModelUsageHeatmapProgress,
   ModelUsageRange,
   ModelUsageSummary,
+  UsageEfficiencySummary,
   ProviderConfigurationUpdate,
   ProviderConfigurationView,
   ProviderUsageResult,
@@ -30,6 +31,9 @@ const api = {
   },
   cancelModelUsage(): Promise<void> {
     return ipcRenderer.invoke("codexPulse:cancelModelUsage");
+  },
+  getUsageEfficiency(): Promise<UsageEfficiencySummary> {
+    return ipcRenderer.invoke("codexPulse:getUsageEfficiency");
   },
   getCodexResetCredits(forceRefresh = false): Promise<CodexResetCreditsResult> {
     return ipcRenderer.invoke("codexPulse:getCodexResetCredits", forceRefresh);

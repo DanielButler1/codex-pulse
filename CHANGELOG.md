@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.18-beta
+
+- Added a dedicated Usage efficiency tab with observed tokens per weekly usage percentage and projected weekly token capacity.
+- Moved model usage into its own tab and persisted custom projection reset targets until they expire.
+- Added versioned incremental SQLite rollups for faster, memory-efficient long-term model usage and heatmap queries.
+
 ## 0.0.17-beta
 
 - Fixed custom projection reset datetimes falling back to the weekly reset instead of updating the graph.

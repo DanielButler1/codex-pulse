@@ -14,6 +14,7 @@ import type {
   CodexResetCreditsResult,
   HistoryRange,
   ModelUsageRange,
+  UsageEfficiencySummary,
   ProviderConfigurationUpdate,
   ProviderConfigurationView,
   ProviderConnectionSettings,
@@ -25,6 +26,8 @@ import { DEFAULT_SETTINGS, SettingsStore } from "./settings";
 import { fetchProviderUsageNative } from "./services/provider-usage";
 import { ProviderSecretsStore } from "./services/provider-secrets";
 import { getAllTimeModelUsageHeatmap, getModelUsageSummary } from "./services/model-usage";
+import { updateModelUsageRollups } from "./services/model-usage-index";
+import { calculateUsageEfficiency } from "./services/usage-efficiency";
 import { CodexUsageService } from "./services/codex-usage";
 import { fetchCodexResetCredits } from "./services/codex-reset-credits";
 import { UsageScheduler } from "./services/scheduler";
@@ -220,6 +223,16 @@ function registerIpc() {
   ipcMain.handle("codexPulse:cancelModelUsage", async () => {
     modelUsageAbortController?.abort();
     modelUsageAbortController = null;
+  });
+  ipcMain.handle("codexPulse:getUsageEfficiency", async (): Promise<UsageEfficiencySummary> => {
+    if (!db) throw new Error("Usage database is not ready.");
+    const controller = getModelUsageAbortController();
+    await updateModelUsageRollups(db, controller.signal);
+    const since = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    return calculateUsageEfficiency(
+      db.getLimitHistorySince(since),
+      db.getModelUsageRollupsSince(since),
+    );
   });
   ipcMain.handle(
     "codexPulse:getCodexResetCredits",
