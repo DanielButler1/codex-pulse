@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.20-beta
+
+- Preserved historical usage snapshots when migrating from the legacy model-usage cache schema.
+- Published deterministic beta-channel manifest aliases for desktop auto-updates.
+
 ## 0.0.19-beta
 
 - Fixed beta update discovery by publishing channel-specific update manifests.

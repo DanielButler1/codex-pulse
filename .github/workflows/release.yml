@@ -108,7 +108,11 @@ jobs:
               if (isHelper || !(isInstaller || isUpdateMetadata || isBlockmap)) {
                 continue;
               }
-              fs.copyFileSync(fullPath, path.join(outputRoot, path.basename(fullPath)));
+              const outputName = path.basename(fullPath);
+              fs.copyFileSync(fullPath, path.join(outputRoot, outputName));
+              if (require('./package.json').version.includes('-beta') && lowerName.startsWith('latest')) {
+                fs.copyFileSync(fullPath, path.join(outputRoot, outputName.replace(/^latest/i, 'beta')));
+              }
             }
           }
 
