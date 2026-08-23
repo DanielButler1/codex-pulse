@@ -68,6 +68,7 @@ const FALLBACK_PROVIDER_SETTINGS: ProviderConnectionSettings = {
 };
 
 const notifiedByThreshold = new Map<number, string>();
+const START_HIDDEN_ARG = "--hidden";
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 function createWindow() {
@@ -133,9 +134,9 @@ async function bootstrap() {
   latestSettings = settingsStore.get();
   applyTheme(latestSettings.theme);
   configureAutoLaunch(latestSettings.startAtLogin);
-  // Packaged builds are tray-first: start the watcher/logger silently and let the tray
-  // open the window on demand instead of flashing UI on login or installer launch.
-  shouldShowWindowOnReady = !app.isPackaged;
+  // Normal launches, including updater relaunches, should show the dashboard.
+  // Only login launches explicitly registered as hidden stay in the tray.
+  shouldShowWindowOnReady = !shouldStartHidden();
 
   const dbPath = path.join(app.getPath("userData"), "codex-pulse.db");
   db = new UsageDatabase(dbPath);
@@ -471,7 +472,20 @@ function configureAutoLaunch(enabled: boolean) {
     return;
   }
 
+  if (process.platform === "win32") {
+    app.setLoginItemSettings({
+      openAtLogin: enabled,
+      args: enabled ? [START_HIDDEN_ARG] : [],
+    });
+    return;
+  }
+
   app.setLoginItemSettings({ openAtLogin: enabled, openAsHidden: enabled });
+}
+
+function shouldStartHidden() {
+  if (process.argv.includes(START_HIDDEN_ARG)) return true;
+  return process.platform === "darwin" && app.getLoginItemSettings().wasOpenedAsHidden;
 }
 
 function getModelUsageAbortController(): AbortController {

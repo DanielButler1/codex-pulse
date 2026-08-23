@@ -101,10 +101,7 @@ jobs:
                 lowerName.endsWith('.exe') ||
                 lowerName.endsWith('.dmg') ||
                 lowerName.endsWith('.appimage');
-              const isUpdateMetadata =
-                lowerName === 'latest.yml' ||
-                lowerName === 'latest-mac.yml' ||
-                lowerName === 'latest-linux.yml';
+              const isUpdateMetadata = /^(latest|beta)(-mac|-linux)?\.yml$/.test(lowerName);
               const isBlockmap = lowerName.endsWith('.blockmap');
               const isHelper = lowerName === 'elevate.exe' || lowerName === 'builder-debug.yml' || lowerName === 'app-update.yml';
 

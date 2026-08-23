@@ -5,6 +5,7 @@
   "asar": true,
   "asarUnpack": ["node_modules/better-sqlite3/**/*"],
   "productName": "Codex Pulse",
+  "generateUpdatesFilesForAllChannels": true,
   "directories": {
     "output": "release/${version}"
   },
