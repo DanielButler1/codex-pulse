@@ -22,6 +22,7 @@ export const codexPulseApi = {
     window.codexPulse.getModelUsage(range, periodStart),
   getModelUsageHeatmap: (): Promise<ModelUsageHeatmapData> =>
     window.codexPulse.getModelUsageHeatmap(),
+  cancelModelUsage: (): Promise<void> => window.codexPulse.cancelModelUsage(),
   getCodexResetCredits: (forceRefresh = false): Promise<CodexResetCreditsResult> =>
     window.codexPulse.getCodexResetCredits(forceRefresh),
   getProviderUsage: (providerId: string): Promise<ProviderUsageResult> =>

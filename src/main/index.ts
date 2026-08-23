@@ -50,6 +50,7 @@ const providerUsageCache = new Map<string, { result: ProviderUsageResult; cached
 const providerUsageInflight = new Map<string, Promise<ProviderUsageResult>>();
 let resetCreditsCache: { result: CodexResetCreditsResult; cachedAt: number } | null = null;
 let resetCreditsInflight: Promise<CodexResetCreditsResult> | null = null;
+let modelUsageAbortController: AbortController | null = null;
 const RESET_CREDITS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const FALLBACK_PROVIDER_SETTINGS: ProviderConnectionSettings = {
@@ -197,19 +198,29 @@ function registerIpc() {
     }
     return db.getHistory(range);
   });
-  ipcMain.handle("codexPulse:getModelUsage", async (_event, range: ModelUsageRange, periodStart?: number | null) =>
-    await getModelUsageSummary(
+  ipcMain.handle("codexPulse:getModelUsage", async (_event, range: ModelUsageRange, periodStart?: number | null) => {
+    if (!db) throw new Error("Usage database is not ready.");
+    const controller = getModelUsageAbortController();
+    return await getModelUsageSummary(
+      db,
       range,
       periodStart ?? undefined,
       scheduler?.getLatestSnapshot()?.secondaryUsedPercent ?? null,
-      db?.getSnapshotsSince(0) ?? [],
-    ),
-  );
-  ipcMain.handle("codexPulse:getModelUsageHeatmap", async () =>
-    await getAllTimeModelUsageHeatmap((progress) => {
+      db?.getLimitHistorySince(0) ?? [],
+      controller.signal,
+    );
+  });
+  ipcMain.handle("codexPulse:getModelUsageHeatmap", async () => {
+    if (!db) throw new Error("Usage database is not ready.");
+    const controller = getModelUsageAbortController();
+    return await getAllTimeModelUsageHeatmap(db, (progress) => {
       mainWindow?.webContents.send("codexPulse:modelUsageHeatmapProgress", progress);
-    }),
-  );
+    }, controller.signal);
+  });
+  ipcMain.handle("codexPulse:cancelModelUsage", async () => {
+    modelUsageAbortController?.abort();
+    modelUsageAbortController = null;
+  });
   ipcMain.handle(
     "codexPulse:getCodexResetCredits",
     async (_event, forceRefresh?: boolean): Promise<CodexResetCreditsResult> =>
@@ -446,7 +457,15 @@ function configureAutoLaunch(enabled: boolean) {
     app.setLoginItemSettings({ openAtLogin: false });
     return;
   }
+
   app.setLoginItemSettings({ openAtLogin: enabled, openAsHidden: enabled });
+}
+
+function getModelUsageAbortController(): AbortController {
+  if (!modelUsageAbortController || modelUsageAbortController.signal.aborted) {
+    modelUsageAbortController = new AbortController();
+  }
+  return modelUsageAbortController;
 }
 
 if (!hasSingleInstanceLock) {

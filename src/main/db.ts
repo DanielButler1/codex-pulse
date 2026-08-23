@@ -21,6 +21,36 @@ type SnapshotRow = {
   raw_json: string | null;
 };
 
+export type ModelUsageRollup = {
+  bucketStart: number;
+  model: string;
+  requests: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  reasoningOutputTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+};
+
+type ModelUsageFileRow = {
+  file_path: string;
+  size_bytes: number;
+  modified_at: number;
+};
+
+type ModelUsageRollupRow = {
+  bucket_start: number;
+  model: string;
+  requests: number;
+  input_tokens: number;
+  cached_input_tokens: number;
+  output_tokens: number;
+  reasoning_output_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+};
+
 const RANGE_TO_MS: Record<HistoryRange, number> = {
   "1h": 60 * 60 * 1000,
   "6h": 6 * 60 * 60 * 1000,
@@ -64,7 +94,38 @@ export class UsageDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_usage_snapshots_checked_at
       ON usage_snapshots(checked_at);
+
+      CREATE TABLE IF NOT EXISTS model_usage_files (
+        file_path TEXT PRIMARY KEY,
+        size_bytes INTEGER NOT NULL,
+        modified_at REAL NOT NULL,
+        indexed_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS model_usage_rollups (
+        file_path TEXT NOT NULL,
+        bucket_start INTEGER NOT NULL,
+        model TEXT NOT NULL,
+        requests INTEGER NOT NULL,
+        input_tokens INTEGER NOT NULL,
+        cached_input_tokens INTEGER NOT NULL,
+        output_tokens INTEGER NOT NULL,
+        reasoning_output_tokens INTEGER NOT NULL,
+        total_tokens INTEGER NOT NULL,
+        estimated_cost_usd REAL NOT NULL,
+        PRIMARY KEY (file_path, bucket_start, model),
+        FOREIGN KEY (file_path) REFERENCES model_usage_files(file_path) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_model_usage_rollups_bucket
+      ON model_usage_rollups(bucket_start);
+
+      CREATE TABLE IF NOT EXISTS model_usage_metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
     `);
+    this.db.pragma("foreign_keys = ON");
   }
 
   insertSnapshot(snapshot: UsageSnapshot): number {
@@ -145,6 +206,128 @@ export class UsageDatabase {
     `);
 
     return filterTransientLimitDrops(statement.all(since).map(mapRowToSnapshot));
+  }
+
+  /**
+   * Model-usage calculations only need the weekly percentage. Avoid selecting
+   * and parsing every stored raw provider response for long ranges.
+   */
+  getLimitHistorySince(since: number): UsageSnapshot[] {
+    const statement = this.db.prepare<[number], SnapshotRow>(`
+      SELECT
+        id, checked_at, provider, account_label, plan_type,
+        primary_used_percent, primary_reset_after_seconds, primary_window_minutes,
+        secondary_used_percent, secondary_reset_after_seconds, secondary_window_minutes,
+        credits_balance, credits_granted, credits_used,
+        NULL AS raw_json
+      FROM usage_snapshots
+      WHERE checked_at >= ?
+      ORDER BY checked_at ASC
+    `);
+
+    return filterTransientLimitDrops(statement.all(since).map(mapRowToSnapshot));
+  }
+
+  getModelUsageFileStates(): Map<string, { sizeBytes: number; modifiedAt: number }> {
+    const rows = this.db.prepare<unknown[], ModelUsageFileRow>(`
+      SELECT file_path, size_bytes, modified_at FROM model_usage_files
+    `).all();
+    return new Map(rows.map((row) => [row.file_path, {
+      sizeBytes: row.size_bytes,
+      modifiedAt: row.modified_at,
+    }]));
+  }
+
+  ensureModelUsageIndexVersion(version: string): boolean {
+    let rebuilt = false;
+    const migrate = this.db.transaction(() => {
+      const row = this.db.prepare<[], { value: string }>(`
+        SELECT value FROM model_usage_metadata WHERE key = 'index_version'
+      `).get();
+      if (row?.value === version) return;
+      this.db.prepare(`DELETE FROM model_usage_rollups`).run();
+      this.db.prepare(`DELETE FROM model_usage_files`).run();
+      this.db.prepare(`
+        INSERT INTO model_usage_metadata (key, value) VALUES ('index_version', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(version);
+      rebuilt = true;
+    });
+    migrate();
+    return rebuilt;
+  }
+
+  replaceModelUsageFile(
+    file: { filePath: string; sizeBytes: number; modifiedAt: number },
+    rollups: ModelUsageRollup[],
+  ): void {
+    const replace = this.db.transaction(() => {
+      this.db.prepare(`DELETE FROM model_usage_rollups WHERE file_path = ?`).run(file.filePath);
+      this.db.prepare(`
+        INSERT INTO model_usage_files (file_path, size_bytes, modified_at, indexed_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(file_path) DO UPDATE SET
+          size_bytes = excluded.size_bytes,
+          modified_at = excluded.modified_at,
+          indexed_at = excluded.indexed_at
+      `).run(file.filePath, file.sizeBytes, file.modifiedAt, Date.now());
+      const insert = this.db.prepare(`
+        INSERT INTO model_usage_rollups (
+          file_path, bucket_start, model, requests, input_tokens, cached_input_tokens,
+          output_tokens, reasoning_output_tokens, total_tokens, estimated_cost_usd
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const row of rollups) {
+        insert.run(
+          file.filePath, row.bucketStart, row.model, row.requests, row.inputTokens,
+          row.cachedInputTokens, row.outputTokens, row.reasoningOutputTokens,
+          row.totalTokens, row.estimatedCostUsd,
+        );
+      }
+    });
+    replace();
+  }
+
+  removeMissingModelUsageFiles(existingPaths: Set<string>): void {
+    const states = this.getModelUsageFileStates();
+    const remove = this.db.prepare(`DELETE FROM model_usage_files WHERE file_path = ?`);
+    const transaction = this.db.transaction(() => {
+      for (const filePath of states.keys()) {
+        if (!existingPaths.has(filePath)) {
+          remove.run(filePath);
+        }
+      }
+    });
+    transaction();
+  }
+
+  getModelUsageRollupsSince(since: number): ModelUsageRollup[] {
+    const rows = this.db.prepare<[number], ModelUsageRollupRow>(`
+      SELECT
+        bucket_start, model,
+        SUM(requests) AS requests,
+        SUM(input_tokens) AS input_tokens,
+        SUM(cached_input_tokens) AS cached_input_tokens,
+        SUM(output_tokens) AS output_tokens,
+        SUM(reasoning_output_tokens) AS reasoning_output_tokens,
+        SUM(total_tokens) AS total_tokens,
+        SUM(estimated_cost_usd) AS estimated_cost_usd
+      FROM model_usage_rollups
+      WHERE bucket_start >= ?
+      GROUP BY bucket_start, model
+      ORDER BY bucket_start ASC
+    `).all(since);
+    return rows.map((row) => ({
+      bucketStart: row.bucket_start,
+      model: row.model,
+      requests: row.requests,
+      inputTokens: row.input_tokens,
+      cachedInputTokens: row.cached_input_tokens,
+      outputTokens: row.output_tokens,
+      reasoningOutputTokens: row.reasoning_output_tokens,
+      totalTokens: row.total_tokens,
+      estimatedCostUsd: row.estimated_cost_usd,
+    }));
   }
 
   cleanupOlderThan(cutoffMs: number): number {

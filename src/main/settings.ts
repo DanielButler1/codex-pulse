@@ -30,6 +30,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   limitDisplayMode: "remaining",
   subscriptionPlan: "free",
   subscriptionLastRenewalDate: "",
+  projectionResetSource: "default",
+  projectionResetAt: null,
   providerSettings: buildDefaultProviderSettings(),
 };
 
@@ -107,8 +109,24 @@ function sanitizeSettings(input: SettingsFile): AppSettings {
     limitDisplayMode,
     subscriptionPlan: sanitizeSubscriptionPlan(input.subscriptionPlan),
     subscriptionLastRenewalDate: sanitizeRenewalDate(input.subscriptionLastRenewalDate),
+    ...sanitizeProjectionReset(input.projectionResetSource, input.projectionResetAt),
     providerSettings,
   };
+}
+
+function sanitizeProjectionReset(
+  source: AppSettings["projectionResetSource"] | undefined,
+  resetAt: number | null | undefined,
+): Pick<AppSettings, "projectionResetSource" | "projectionResetAt"> {
+  if (
+    (source === "manual" || source === "custom") &&
+    typeof resetAt === "number" &&
+    Number.isFinite(resetAt) &&
+    resetAt > Date.now()
+  ) {
+    return { projectionResetSource: source, projectionResetAt: resetAt };
+  }
+  return { projectionResetSource: "default", projectionResetAt: null };
 }
 
 function sanitizeSubscriptionPlan(value: AppSettings["subscriptionPlan"] | undefined): AppSettings["subscriptionPlan"] {

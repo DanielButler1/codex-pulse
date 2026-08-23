@@ -91,6 +91,8 @@ export type AppSettings = {
   limitDisplayMode: "remaining" | "used";
   subscriptionPlan: SubscriptionPlan;
   subscriptionLastRenewalDate: string;
+  projectionResetSource: "default" | "manual" | "custom";
+  projectionResetAt: number | null;
   providerSettings: Record<string, ProviderConnectionSettings>;
 };
 

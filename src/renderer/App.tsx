@@ -11,7 +11,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { AlertTriangle, Download, RefreshCw, Settings2 } from "lucide-react";
+import { AlertTriangle, BarChart3, Download, Gauge, RefreshCw, Settings2 } from "lucide-react";
 import { ModelUsageTable } from "./components/ModelUsageTable";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { StatusBar } from "./components/StatusBar";
@@ -50,6 +50,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   limitDisplayMode: "remaining",
   subscriptionPlan: "free",
   subscriptionLastRenewalDate: "",
+  projectionResetSource: "default",
+  projectionResetAt: null,
   providerSettings: Object.fromEntries(
     PROVIDER_IDS.map((providerId) => [
       providerId,
@@ -103,15 +105,23 @@ type PaceChartPoint = PredictionTimelinePoint & {
 type PaceState = "on_pace" | "slow_down" | "speed_up";
 
 type ProjectionResetSource = "default" | "manual" | "custom";
+type DashboardTab = "overview" | "models";
 
 type FiveHourLimitWarning = {
   hitAt: number;
   usedPercent: number;
 };
 
+function toDateTimeLocalValue(timestamp: number): string {
+  const date = new Date(timestamp);
+  const local = new Date(timestamp - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
 export default function App() {
   const isDevBuild = import.meta.env.DEV;
   const [showSettings, setShowSettings] = useState(false);
+  const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
   const [projectionResetSource, setProjectionResetSource] =
     useState<ProjectionResetSource>("default");
@@ -161,6 +171,12 @@ export default function App() {
   const loadSettings = useCallback(async () => {
     const currentSettings = await codexPulseApi.getSettings();
     setSettings(currentSettings);
+    setProjectionResetSource(currentSettings.projectionResetSource);
+    setCustomProjectionReset(
+      currentSettings.projectionResetSource === "custom" && currentSettings.projectionResetAt != null
+        ? toDateTimeLocalValue(currentSettings.projectionResetAt)
+        : "",
+    );
   }, []);
 
   const loadUpdateState = useCallback(async () => {
@@ -258,6 +274,10 @@ export default function App() {
   }, [load, loadResetCredits, loadSettings, loadUpdateState]);
 
   useEffect(() => {
+    if (activeTab !== "models") {
+      void codexPulseApi.cancelModelUsage();
+      return;
+    }
     if (modelRange === "period") {
       const referenceUsage = modelUsageReferenceRef.current;
       if (!referenceUsage) {
@@ -275,9 +295,12 @@ export default function App() {
       return;
     }
     void loadModelUsage(modelRange);
-  }, [loadModelUsage, modelRange, settings.subscriptionLastRenewalDate]);
+  }, [activeTab, loadModelUsage, modelRange, settings.subscriptionLastRenewalDate]);
 
   useEffect(() => {
+    if (activeTab !== "models") {
+      return;
+    }
     if (modelRange !== "period" && modelRange !== "sub_period") {
       return;
     }
@@ -299,11 +322,14 @@ export default function App() {
       return;
     }
     void loadModelUsage("sub_period");
-  }, [loadModelUsage, modelRange, modelUsage, settings.subscriptionLastRenewalDate]);
+  }, [activeTab, loadModelUsage, modelRange, modelUsage, settings.subscriptionLastRenewalDate]);
 
   useEffect(() => {
+    if (activeTab !== "models") {
+      return;
+    }
     void loadModelHeatmap();
-  }, [loadModelHeatmap]);
+  }, [activeTab, loadModelHeatmap]);
 
   useEffect(() => {
     const unsubscribe = codexPulseApi.subscribeToModelUsageHeatmapProgress((progress) => {
@@ -326,7 +352,10 @@ export default function App() {
       void loadSettings();
       void loadUpdateState();
       void loadResetCredits();
-      if (Date.now() - lastModelUsageLoadAtRef.current >= MODEL_USAGE_BACKGROUND_REFRESH_MS) {
+      if (
+        activeTab === "models" &&
+        Date.now() - lastModelUsageLoadAtRef.current >= MODEL_USAGE_BACKGROUND_REFRESH_MS
+      ) {
         void loadModelUsage(modelRange);
       }
     });
@@ -336,6 +365,7 @@ export default function App() {
     };
   }, [
     load,
+    activeTab,
     loadModelUsage,
     loadResetCredits,
     loadSettings,
@@ -382,20 +412,23 @@ export default function App() {
     try {
       await codexPulseApi.refreshNow();
       const latestUsage = await load();
-      await Promise.all([
-        loadModelHeatmap(),
-        loadResetCredits(true),
-        modelRange === "period"
-          ? loadModelUsage("period", latestUsage ?? modelUsageReferenceRef.current)
-          : loadModelUsage(modelRange),
-      ]);
+      const refreshes: Array<Promise<unknown>> = [loadResetCredits(true)];
+      if (activeTab === "models") {
+        refreshes.push(
+          loadModelHeatmap(),
+          modelRange === "period"
+            ? loadModelUsage("period", latestUsage ?? modelUsageReferenceRef.current)
+            : loadModelUsage(modelRange),
+        );
+      }
+      await Promise.all(refreshes);
     } catch (error) {
       console.error("Failed to refresh usage", error);
       await load().catch((loadError) => {
         console.error("Failed to reload usage after refresh error", loadError);
       });
     }
-  }, [load, loadModelHeatmap, loadModelUsage, loadResetCredits, modelRange]);
+  }, [activeTab, load, loadModelHeatmap, loadModelUsage, loadResetCredits, modelRange]);
 
   const onModelRangeChange = useCallback(
     (range: ModelUsageRange) => {
@@ -420,6 +453,17 @@ export default function App() {
       }
     },
     [settings],
+  );
+
+  const persistProjectionReset = useCallback(
+    (source: ProjectionResetSource, resetAt: number | null) => {
+      setProjectionResetSource(source);
+      void onSettingsChange({
+        projectionResetSource: source,
+        projectionResetAt: source === "default" ? null : resetAt,
+      });
+    },
+    [onSettingsChange],
   );
 
   const authMessage = useMemo(() => {
@@ -448,22 +492,20 @@ export default function App() {
       ? activeSnapshot.checkedAt + activeSnapshot.secondaryResetAfterSeconds * 1000
       : null;
   const nextManualResetAt = findNextAvailableManualResetAt(resetCredits, Date.now());
-  const customProjectionResetAt = customProjectionReset
-    ? new Date(customProjectionReset).getTime()
-    : null;
   useEffect(() => {
-    if (projectionResetSource === "manual" && nextManualResetAt == null) {
-      setProjectionResetSource("default");
+    if (
+      settings.projectionResetSource !== "default" &&
+      (settings.projectionResetAt == null || settings.projectionResetAt <= Date.now())
+    ) {
+      persistProjectionReset("default", null);
     }
-  }, [nextManualResetAt, projectionResetSource]);
+  }, [persistProjectionReset, settings.projectionResetAt, settings.projectionResetSource]);
   const projectionResetAt =
-    projectionResetSource === "manual" && nextManualResetAt != null
-      ? nextManualResetAt
-      : projectionResetSource === "custom" &&
-          customProjectionResetAt != null &&
-          Number.isFinite(customProjectionResetAt)
-        ? customProjectionResetAt
-        : weeklyResetAt;
+    projectionResetSource !== "default" &&
+    settings.projectionResetAt != null &&
+    settings.projectionResetAt > Date.now()
+      ? settings.projectionResetAt
+      : weeklyResetAt;
   const primaryResetAt =
     activeSnapshot?.checkedAt != null && activeSnapshot.primaryResetAfterSeconds != null
       ? activeSnapshot.checkedAt + activeSnapshot.primaryResetAfterSeconds * 1000
@@ -574,14 +616,23 @@ export default function App() {
           </div>
           <p className="mt-1 text-xs text-neutral-400">Local usage monitor for Codex.</p>
         </div>
-        <div className="mt-4 flex-1 px-2">
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">Dashboard</p>
-            <p className="mt-2 text-sm font-medium text-neutral-100">Codex</p>
-            <p className="mt-1 text-xs leading-5 text-neutral-400">
-              Weekly limits, projection, rollout usage, and subscription period tracking.
-            </p>
-          </div>
+        <div className="mt-4 flex-1 space-y-1 px-2">
+          <button
+            type="button"
+            onClick={() => { setActiveTab("overview"); setShowSettings(false); }}
+            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeTab === "overview" && !showSettings ? "bg-neutral-800 text-white" : "text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200"}`}
+          >
+            <Gauge className="h-4 w-4" />
+            <span>Overview</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab("models"); setShowSettings(false); }}
+            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeTab === "models" && !showSettings ? "bg-neutral-800 text-white" : "text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200"}`}
+          >
+            <BarChart3 className="h-4 w-4" />
+            <span>Model usage</span>
+          </button>
         </div>
         <div className="border-t border-neutral-800 px-2 py-3">
           <label
@@ -593,9 +644,17 @@ export default function App() {
           <select
             id="projection-reset-source"
             value={projectionResetSource}
-            onChange={(event) =>
-              setProjectionResetSource(event.target.value as ProjectionResetSource)
-            }
+            onChange={(event) => {
+              const source = event.target.value as ProjectionResetSource;
+              if (source === "default") {
+                setCustomProjectionReset("");
+                persistProjectionReset("default", null);
+              } else if (source === "manual") {
+                persistProjectionReset("manual", nextManualResetAt);
+              } else {
+                setProjectionResetSource("custom");
+              }
+            }}
             className="mt-2 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 outline-none transition focus:border-neutral-500"
           >
             <option value="default">Default weekly reset</option>
@@ -611,7 +670,14 @@ export default function App() {
               type="datetime-local"
               aria-label="Custom projection reset date and time"
               value={customProjectionReset}
-              onChange={(event) => setCustomProjectionReset(event.target.value)}
+              onChange={(event) => {
+                const value = event.target.value;
+                const resetAt = value ? new Date(value).getTime() : null;
+                setCustomProjectionReset(value);
+                if (resetAt != null && Number.isFinite(resetAt) && resetAt > Date.now()) {
+                  persistProjectionReset("custom", resetAt);
+                }
+              }}
               className="mt-2 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 outline-none transition focus:border-neutral-500"
             />
           ) : null}
@@ -703,6 +769,8 @@ export default function App() {
                 </p>
               </section>
 
+              {activeTab === "overview" ? (
+                <>
               <section>
                 <h2 className="mb-3 text-2xl font-semibold">Usage</h2>
                 <ProviderUsagePanel
@@ -718,7 +786,6 @@ export default function App() {
                 />
               </section>
 
-              <>
                   <section className="rounded-2xl bg-neutral-900 p-5">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
@@ -912,6 +979,14 @@ export default function App() {
                     <UsageSparkline data={windowHistory} />
                   </section>
 
+                  <ResetCreditsSection
+                    resetCredits={resetCredits}
+                    loading={resetCreditsLoading}
+                  />
+                </>
+              ) : (
+                <>
+
                   {modelHeatmapLoading && modelHeatmapProgress ? (
                     <div className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-neutral-400">
                       Loading historical usage: {modelHeatmapProgress.processedFiles.toLocaleString()} of {modelHeatmapProgress.totalFiles.toLocaleString()} files
@@ -927,11 +1002,8 @@ export default function App() {
                     onRangeChange={onModelRangeChange}
                     onOpenSettings={onOpenSettings}
                   />
-                  <ResetCreditsSection
-                    resetCredits={resetCredits}
-                    loading={resetCreditsLoading}
-                  />
-              </>
+                </>
+              )}
             </>
           )}
 

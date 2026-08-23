@@ -45,6 +45,7 @@ declare global {
       getUsageHistory(range: HistoryRange): Promise<UsageSnapshot[]>;
       getModelUsage(range: ModelUsageRange, periodStart?: number | null): Promise<ModelUsageSummary>;
       getModelUsageHeatmap(): Promise<ModelUsageHeatmapData>;
+      cancelModelUsage(): Promise<void>;
       getCodexResetCredits(forceRefresh?: boolean): Promise<CodexResetCreditsResult>;
       getProviderUsage(providerId: string): Promise<ProviderUsageResult>;
       getProviderConfig(providerId: string): Promise<ProviderConfigurationView>;

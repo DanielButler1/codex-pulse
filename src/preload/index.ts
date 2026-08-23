@@ -28,6 +28,9 @@ const api = {
   getModelUsageHeatmap(): Promise<ModelUsageHeatmapData> {
     return ipcRenderer.invoke("codexPulse:getModelUsageHeatmap");
   },
+  cancelModelUsage(): Promise<void> {
+    return ipcRenderer.invoke("codexPulse:cancelModelUsage");
+  },
   getCodexResetCredits(forceRefresh = false): Promise<CodexResetCreditsResult> {
     return ipcRenderer.invoke("codexPulse:getCodexResetCredits", forceRefresh);
   },

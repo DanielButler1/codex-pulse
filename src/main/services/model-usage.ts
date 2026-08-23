@@ -1,5 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import readline from "node:readline";
+import type { UsageDatabase } from "../db";
+import { updateModelUsageRollups } from "./model-usage-index";
 import type {
   ModelUsageHeatmapData,
   ModelUsageHeatmapProgress,
@@ -8,7 +11,6 @@ import type {
   ModelUsageSummary,
   UsageSnapshot,
 } from "../../../shared/types";
-import { resolveCodexHome } from "./codex-auth";
 
 type MutableModelUsageRow = ModelUsageRow;
 
@@ -122,10 +124,12 @@ const MODEL_PRICING: Array<{ prefix: string; pricing: ModelPricing }> = [
 ];
 
 export async function getModelUsageSummary(
+  db: UsageDatabase,
   range: ModelUsageRange,
   periodStart?: number,
   currentWeeklyUsedPercent: number | null = null,
   usageHistory: UsageSnapshot[] = [],
+  signal?: AbortSignal,
 ): Promise<ModelUsageSummary> {
   const generatedAt = Date.now();
   const since =
@@ -135,19 +139,28 @@ export async function getModelUsageSummary(
         ? Math.max(0, periodStart ?? generatedAt - RANGE_TO_MS["7d"])
         : generatedAt - RANGE_TO_MS[range];
   const timelineGranularity = resolveTimelineGranularity(range);
-  const sessionsDir = path.join(resolveCodexHome(), "sessions");
-  const rangeFiles = findRolloutFiles(sessionsDir, range === "all" ? 0 : since - DAY_MS);
+  await updateModelUsageRollups(db, signal);
+  const currentMonthStart = getMonthStart(generatedAt);
+  const indexedRows = db.getModelUsageRollupsSince(Math.min(since, currentMonthStart));
+  const rangeRows = indexedRows.filter((row) => row.bucketStart >= since);
 
   const byModel = new Map<string, MutableModelUsageRow>();
   const timelineBuckets = new Map<number, TimelineBucket>();
-  for (const filePath of rangeFiles) {
-    await collectFileUsage(
-      filePath,
-      since,
-      byModel,
+  for (const rollup of rangeRows) {
+    const model = ensureModel(byModel, rollup.model);
+    model.requests += rollup.requests;
+    model.inputTokens += rollup.inputTokens;
+    model.cachedInputTokens += rollup.cachedInputTokens;
+    model.outputTokens += rollup.outputTokens;
+    model.reasoningOutputTokens += rollup.reasoningOutputTokens;
+    model.totalTokens += rollup.totalTokens;
+    model.estimatedCostUsd += rollup.estimatedCostUsd;
+    const bucket = ensureTimelineBucket(
       timelineBuckets,
-      timelineGranularity,
+      getTimelineBucketStart(rollup.bucketStart, timelineGranularity),
     );
+    bucket.totalTokens += rollup.totalTokens;
+    bucket.estimatedCostUsd += rollup.estimatedCostUsd;
   }
 
   const models = [...byModel.values()].sort((a, b) => {
@@ -210,9 +223,17 @@ export async function getModelUsageSummary(
     generatedAt,
   });
   const monthly = aggregateMonthlyFromTimeline(timeline);
-  const monthProjection =
-    (await calculateCurrentMonthProjection(sessionsDir, generatedAt)) ??
-    calculateCurrentMonthProjectionFromTimeline(timeline, generatedAt);
+  const monthTimelineBuckets = new Map<number, TimelineBucket>();
+  for (const rollup of indexedRows) {
+    if (rollup.bucketStart < currentMonthStart) continue;
+    const bucket = ensureTimelineBucket(monthTimelineBuckets, getTimelineBucketStart(rollup.bucketStart, "1d"));
+    bucket.totalTokens += rollup.totalTokens;
+    bucket.estimatedCostUsd += rollup.estimatedCostUsd;
+  }
+  const monthProjection = calculateCurrentMonthProjectionFromTimeline(
+    [...monthTimelineBuckets.values()],
+    generatedAt,
+  );
 
   return {
     range,
@@ -237,21 +258,19 @@ export async function getModelUsageSummary(
 }
 
 export async function getAllTimeModelUsageHeatmap(
+  db: UsageDatabase,
   onProgress?: (progress: ModelUsageHeatmapProgress) => void,
+  signal?: AbortSignal,
 ): Promise<ModelUsageHeatmapData> {
   const generatedAt = Date.now();
-  const codexHome = resolveCodexHome();
-  const roots = [
-    path.join(codexHome, "sessions"),
-    path.join(codexHome, "archived_sessions"),
-  ];
-
-  const files = roots.flatMap((root) => findRolloutFiles(root, 0));
   const heatmapBuckets = new Map<string, HeatmapBucket>();
-  onProgress?.({ processedFiles: 0, totalFiles: files.length });
-  for (let index = 0; index < files.length; index += 1) {
-    await collectHeatmapUsage(files[index], heatmapBuckets);
-    onProgress?.({ processedFiles: index + 1, totalFiles: files.length });
+  await updateModelUsageRollups(db, signal, (processedFiles, totalFiles) => {
+    onProgress?.({ processedFiles, totalFiles });
+  });
+  for (const rollup of db.getModelUsageRollupsSince(0)) {
+    if (signal?.aborted) throw new DOMException("Model usage heatmap cancelled", "AbortError");
+    const heatmapBucket = ensureHeatmapBucket(heatmapBuckets, rollup.bucketStart);
+    heatmapBucket.totalTokens += rollup.totalTokens;
   }
 
   return {
@@ -260,7 +279,7 @@ export async function getAllTimeModelUsageHeatmap(
   };
 }
 
-async function collectFileUsage(
+export async function collectFileUsage(
   filePath: string,
   since: number,
   byModel: Map<string, MutableModelUsageRow>,
@@ -351,7 +370,7 @@ async function collectFileUsage(
   }
 }
 
-async function collectHeatmapUsage(
+export async function collectHeatmapUsage(
   filePath: string,
   heatmapBuckets: Map<string, HeatmapBucket>,
 ) {
@@ -599,7 +618,7 @@ function aggregateMonthlyFromTimeline(
   return [...monthly.values()].sort((a, b) => a.monthStart - b.monthStart);
 }
 
-async function calculateCurrentMonthProjection(
+export async function calculateCurrentMonthProjection(
   sessionsDir: string,
   generatedAt: number,
 ): Promise<MonthProjection | null> {
@@ -755,14 +774,24 @@ async function collectMonthTotalsFromFile(
 
 
 async function* readJsonlLines(filePath: string): AsyncGenerator<string> {
-  let content: string;
+  let input: fs.ReadStream;
   try {
-    content = await fs.promises.readFile(filePath, "utf8");
+    input = fs.createReadStream(filePath, { encoding: "utf8" });
   } catch {
     return;
   }
-  for (const line of content.split(/\r?\n/)) {
-    yield line;
+
+  const lines = readline.createInterface({ input, crlfDelay: Infinity });
+  try {
+    for await (const line of lines) {
+      yield line;
+    }
+  } catch {
+    // Rollout files can disappear while Codex archives them. Treat that as an
+    // unreadable file, consistent with the old readFile behavior.
+  } finally {
+    lines.close();
+    input.destroy();
   }
 }
 
@@ -807,7 +836,7 @@ function normalizeModelName(value: unknown): string {
   return "unknown";
 }
 
-function estimateCostUsd(model: string, usage: TokenTotals): number {
+export function estimateCostUsd(model: string, usage: TokenTotals): number {
   const pricing = resolveModelPricing(model);
   // Cached input tokens are a discounted subset of input tokens, not an extra bucket.
   const cachedInputTokens = Math.min(usage.cachedInputTokens, usage.inputTokens);
