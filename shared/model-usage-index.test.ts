@@ -56,6 +56,40 @@ test("does not commit work when indexing is already cancelled", async () => {
   }
 });
 
+test("ignores replayed token counts that precede the first turn context", async () => {
+  const fixture = createFixture();
+  const store = new MemoryRollupStore();
+  try {
+    // Resumed Codex Desktop sessions replay the parent thread's history before
+    // any turn_context: historical token_count events with no turn_id that were
+    // already counted in the original rollout file.
+    fs.writeFileSync(fixture.rollout, [
+      JSON.stringify({ timestamp: "2026-08-23T10:00:00.000Z", type: "session_meta", payload: { session_id: "parent" } }),
+      JSON.stringify({ timestamp: "2026-08-23T10:00:01.000Z", type: "event_msg", payload: { type: "user_message" } }),
+      tokenCountEvent("2026-08-23T10:00:02.000Z", null, 900, 100),
+      tokenCountEvent("2026-08-23T10:00:03.000Z", null, 1100, 120),
+      JSON.stringify({ timestamp: "2026-08-23T10:00:04.000Z", type: "event_msg", payload: { type: "agent_message" } }),
+      JSON.stringify({ timestamp: "2026-08-23T10:00:05.000Z", type: "turn_context", payload: { turn_id: "live", model: "gpt-test" } }),
+      tokenCountEvent("2026-08-23T10:00:06.000Z", "live", 1300, 140),
+    ].join("\n") + "\n");
+
+    await updateModelUsageRollups(store.asDatabase(), undefined, undefined, "replay-test-v1");
+
+    const rows = [...store.rows.values()].flat();
+    assert.equal(rows.length, 1, "only the live turn should be attributed");
+    const row = rows[0];
+    assert.equal(row.model, "gpt-test");
+    assert.equal(row.requests, 1);
+    // Delta comes from the cumulative totals across the replay boundary
+    // (1440 - 1220), not from last_token_usage.
+    assert.equal(row.totalTokens, 220);
+    assert.equal(row.inputTokens, 200);
+    assert.equal(row.outputTokens, 20);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 class MemoryRollupStore {
   version = "";
   replacements = 0;
@@ -116,12 +150,16 @@ function createFixture() {
 }
 
 function tokenEvent(timestamp: string, input: number, output: number): string {
+  return tokenCountEvent(timestamp, "one", input, output);
+}
+
+function tokenCountEvent(timestamp: string, turnId: string | null, input: number, output: number): string {
   return JSON.stringify({
     timestamp,
     type: "event_msg",
     payload: {
       type: "token_count",
-      turn_id: "one",
+      ...(turnId ? { turn_id: turnId } : {}),
       info: {
         total_token_usage: { input_tokens: input, cached_input_tokens: 0, output_tokens: output, reasoning_output_tokens: 0, total_tokens: input + output },
         last_token_usage: { input_tokens: input, cached_input_tokens: 0, output_tokens: output, reasoning_output_tokens: 0, total_tokens: input + output },

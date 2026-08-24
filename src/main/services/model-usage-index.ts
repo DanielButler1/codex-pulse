@@ -8,7 +8,7 @@ import { estimateIndexedCostUsd } from "./model-usage-pricing.ts";
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
 // Increment whenever parsing, bucketing, or pricing semantics change. Existing
 // rows are rebuilt automatically so cached totals never mix algorithms.
-export const MODEL_USAGE_INDEX_VERSION = "2";
+export const MODEL_USAGE_INDEX_VERSION = "3";
 
 type TokenTotals = {
   inputTokens: number;
@@ -76,6 +76,11 @@ async function parseRolloutFile(filePath: string, signal?: AbortSignal): Promise
   const turnIdToModel = new Map<string, string>();
   const countedTurns = new Set<string>();
   let currentModel = "unknown";
+  // Resumed Codex Desktop sessions replay the parent thread's history (including
+  // historical token_count events) before the first turn_context. Those events
+  // carry no model information and duplicate usage already recorded in the
+  // original rollout file, so they must not be attributed.
+  let sawTurnContext = false;
   let previousTotalTokens: TokenTotals | null = null;
   const input = fs.createReadStream(filePath, { encoding: "utf8" });
   const lines = readline.createInterface({ input, crlfDelay: Infinity });
@@ -90,6 +95,7 @@ async function parseRolloutFile(filePath: string, signal?: AbortSignal): Promise
       const payload = toObject(event.payload);
 
       if (event.type === "turn_context" && payload) {
+        sawTurnContext = true;
         const model = normalizeModel(payload.model);
         const turnId = typeof payload.turn_id === "string" ? payload.turn_id : null;
         if (turnId) turnIdToModel.set(turnId, model);
@@ -109,6 +115,7 @@ async function parseRolloutFile(filePath: string, signal?: AbortSignal): Promise
         ? subtractTokenTotals(currentTotals, previousTotalTokens)
         : extractTokenTotals(info?.last_token_usage) ?? emptyTokenTotals();
       previousTotalTokens = currentTotals;
+      if (!sawTurnContext) continue;
       if (delta.totalTokens <= 0) continue;
       const turnId = typeof payload.turn_id === "string" ? payload.turn_id : null;
       const model = normalizeModel((turnId ? turnIdToModel.get(turnId) : null) ?? currentModel);
