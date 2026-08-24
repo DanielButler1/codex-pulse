@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.23-beta
+
+- Stopped attributing replayed rollout token counts that precede the first turn context to the unknown model.
+- Rebuilt cached model usage rollups so resumed Codex Desktop sessions no longer double-count replayed history.
+
 ## 0.0.20-beta
 
 - Preserved historical usage snapshots when migrating from the legacy model-usage cache schema.
