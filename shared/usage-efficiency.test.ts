@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateUsageEfficiency, summarizeUsageEfficiency } from "../src/main/services/usage-efficiency.ts";
+import {
+  calculateModelUsageEfficiency,
+  calculateUsageEfficiency,
+  summarizeUsageEfficiency,
+} from "../src/main/services/usage-efficiency.ts";
 import type { ModelUsageRollup } from "../src/main/db.ts";
 import type { UsageSnapshot } from "./types.ts";
 
@@ -96,6 +100,29 @@ test("summarizes persisted weekly estimates in reverse chronological order", () 
   assert.equal(result.estimateWeeks, 2);
 });
 
+test("separates model efficiency from mixed recent windows", () => {
+  const start = Date.parse("2026-08-01T00:00:00Z");
+  const weeks = [
+    efficiencyWeek(start, 20),
+    efficiencyWeek(start + 1_000_000, 10),
+    efficiencyWeek(start + 2_000_000, 30),
+    efficiencyWeek(start + 3_000_000, 50),
+  ];
+  const result = calculateModelUsageEfficiency(weeks, [
+    rollup(start + 1_000, 1_000_000_000, "sol"),
+    rollup(start + 1_001_000, 1_000_000_000, "luna"),
+    rollup(start + 2_001_000, 1_000_000_000, "sol"),
+    rollup(start + 2_002_000, 1_000_000_000, "luna"),
+    rollup(start + 3_001_000, 2_000_000_000, "sol"),
+    rollup(start + 3_002_000, 1_000_000_000, "luna"),
+  ]);
+
+  const byModel = new Map(result.modelEstimates.map((estimate) => [estimate.model, estimate]));
+  assert.ok((result.modelFitR2 ?? 0) > 0.99);
+  assert.ok(Math.abs(byModel.get("sol")!.projectedWeeklyTokens! / 5_000_000_000 - 1) < 0.0001);
+  assert.ok(Math.abs(byModel.get("luna")!.projectedWeeklyTokens! / 10_000_000_000 - 1) < 0.0001);
+});
+
 function snapshot(checkedAt: number, resetAt: number, used: number): UsageSnapshot {
   return {
     checkedAt, provider: "codex", primaryUsedPercent: null, primaryResetAfterSeconds: null,
@@ -104,10 +131,23 @@ function snapshot(checkedAt: number, resetAt: number, used: number): UsageSnapsh
   };
 }
 
-function rollup(bucketStart: number, totalTokens: number): ModelUsageRollup {
+function rollup(bucketStart: number, totalTokens: number, model = "test"): ModelUsageRollup {
   return {
-    bucketStart, model: "test", requests: 1, inputTokens: totalTokens,
+    bucketStart, model, requests: 1, inputTokens: totalTokens,
     cachedInputTokens: 0, outputTokens: 0, reasoningOutputTokens: 0,
     totalTokens, estimatedCostUsd: 0,
+  };
+}
+
+function efficiencyWeek(observedFrom: number, observedUsagePercent: number) {
+  return {
+    resetAt: observedFrom + 7 * 24 * 60 * 60 * 1000,
+    observedFrom,
+    observedTo: observedFrom + 10_000,
+    observedUsagePercent,
+    totalTokens: 1,
+    tokensPerPercent: 1,
+    projectedWeeklyTokens: 100,
+    observations: 2,
   };
 }

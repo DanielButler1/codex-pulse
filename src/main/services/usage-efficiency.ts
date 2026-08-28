@@ -1,5 +1,10 @@
 import type { ModelUsageRollup } from "../db";
-import type { UsageEfficiencySummary, UsageEfficiencyWeek, UsageSnapshot } from "../../../shared/types";
+import type {
+  UsageEfficiencyModelEstimate,
+  UsageEfficiencySummary,
+  UsageEfficiencyWeek,
+  UsageSnapshot,
+} from "../../../shared/types";
 
 const RESET_KEY_MS = 5 * 60 * 1000;
 const ROLLUP_BUCKET_MS = 5 * 60 * 1000;
@@ -7,6 +12,11 @@ const WEEKLY_WINDOW_MINUTES = 7 * 24 * 60;
 const WEEKLY_WINDOW_TOLERANCE_MINUTES = 60;
 const MIN_OBSERVED_USAGE_PERCENT = 5;
 const HEADLINE_WINDOW_COUNT = 8;
+const MODEL_ESTIMATE_WINDOW_COUNT = 12;
+const MIN_MODEL_TOKEN_SHARE = 0.03;
+const MIN_MODEL_WINDOWS = 3;
+const MAX_ESTIMATED_MODELS = 4;
+const BILLION_TOKENS = 1_000_000_000;
 
 type EfficiencyCandidate = UsageEfficiencyWeek & {
   intervalFrom: number;
@@ -104,8 +114,136 @@ export function summarizeUsageEfficiency(
     totalTokens,
     confidence,
     estimateWeeks: usable.length,
+    modelFitR2: null,
+    modelEstimateWindows: 0,
+    modelEstimates: [],
     weeks: ordered,
   };
+}
+
+export function calculateModelUsageEfficiency(
+  weeks: UsageEfficiencyWeek[],
+  rollups: ModelUsageRollup[],
+): Pick<UsageEfficiencySummary, "modelFitR2" | "modelEstimateWindows" | "modelEstimates"> {
+  const recentWeeks = [...weeks]
+    .filter((week) => week.tokensPerPercent != null)
+    .sort((a, b) => b.resetAt - a.resetAt)
+    .slice(0, MODEL_ESTIMATE_WINDOW_COUNT);
+  if (recentWeeks.length < MIN_MODEL_WINDOWS) {
+    return { modelFitR2: null, modelEstimateWindows: recentWeeks.length, modelEstimates: [] };
+  }
+
+  const windowTokens = recentWeeks.map((week) => {
+    const byModel = new Map<string, number>();
+    for (const rollup of rollups) {
+      if (rollup.bucketStart + ROLLUP_BUCKET_MS <= week.observedFrom || rollup.bucketStart > week.observedTo) continue;
+      byModel.set(rollup.model, (byModel.get(rollup.model) ?? 0) + rollup.totalTokens);
+    }
+    return byModel;
+  });
+  const totals = new Map<string, number>();
+  for (const byModel of windowTokens) {
+    for (const [model, tokens] of byModel) totals.set(model, (totals.get(model) ?? 0) + tokens);
+  }
+  const allTokens = [...totals.values()].reduce((sum, tokens) => sum + tokens, 0);
+  if (allTokens <= 0) {
+    return { modelFitR2: null, modelEstimateWindows: recentWeeks.length, modelEstimates: [] };
+  }
+
+  const rankedModels = [...totals.entries()].sort((a, b) => b[1] - a[1]);
+  const estimatedModels = rankedModels
+    .filter(([model, tokens]) =>
+      model !== "unknown" &&
+      tokens / allTokens >= MIN_MODEL_TOKEN_SHARE &&
+      countModelWindows(model, windowTokens) >= MIN_MODEL_WINDOWS
+    )
+    .slice(0, MAX_ESTIMATED_MODELS)
+    .map(([model]) => model);
+
+  const design = recentWeeks.map((_week, index) =>
+    estimatedModels.map((model) => (windowTokens[index].get(model) ?? 0) / BILLION_TOKENS)
+  );
+  const outcome = recentWeeks.map((week) => week.observedUsagePercent);
+  const coefficients = fitNonNegativeModel(design, outcome);
+  const predictions = design.map((row) => row.reduce((sum, value, index) => sum + value * coefficients[index], 0));
+  const fitR2 = calculateR2(outcome, predictions);
+  const coefficientByModel = new Map(estimatedModels.map((model, index) => [model, coefficients[index]]));
+
+  const modelEstimates: UsageEfficiencyModelEstimate[] = rankedModels.map(([model, observedTokens]) => {
+    const recentTokenShare = observedTokens / allTokens;
+    const windows = countModelWindows(model, windowTokens);
+    const coefficient = coefficientByModel.get(model) ?? 0;
+    const canEstimate = coefficient > 0 && fitR2 >= 0.35;
+    const tokensPerPercent = canEstimate ? BILLION_TOKENS / coefficient : null;
+    return {
+      model,
+      recentTokenShare,
+      observedTokens,
+      windows,
+      tokensPerPercent,
+      projectedWeeklyTokens: tokensPerPercent == null ? null : tokensPerPercent * 100,
+      confidence: modelConfidence(recentTokenShare, windows, fitR2, canEstimate),
+    };
+  });
+  return {
+    modelFitR2: Number.isFinite(fitR2) ? fitR2 : null,
+    modelEstimateWindows: recentWeeks.length,
+    modelEstimates,
+  };
+}
+
+function countModelWindows(model: string, windows: Array<Map<string, number>>): number {
+  return windows.filter((byModel) => {
+    const total = [...byModel.values()].reduce((sum, tokens) => sum + tokens, 0);
+    return total > 0 && (byModel.get(model) ?? 0) / total >= 0.01;
+  }).length;
+}
+
+function fitNonNegativeModel(design: number[][], outcome: number[]): number[] {
+  if (design.length === 0 || design[0]?.length === 0) return [];
+  const coefficients = new Array<number>(design[0].length).fill(0);
+  for (let iteration = 0; iteration < 500; iteration += 1) {
+    let largestChange = 0;
+    for (let modelIndex = 0; modelIndex < coefficients.length; modelIndex += 1) {
+      let numerator = 0;
+      let denominator = 0;
+      for (let windowIndex = 0; windowIndex < design.length; windowIndex += 1) {
+        const value = design[windowIndex][modelIndex];
+        const predictionWithoutModel = design[windowIndex].reduce(
+          (sum, item, index) => sum + (index === modelIndex ? 0 : item * coefficients[index]),
+          0,
+        );
+        numerator += value * (outcome[windowIndex] - predictionWithoutModel);
+        denominator += value * value;
+      }
+      const next = denominator > 0 ? Math.max(0, numerator / denominator) : 0;
+      largestChange = Math.max(largestChange, Math.abs(next - coefficients[modelIndex]));
+      coefficients[modelIndex] = next;
+    }
+    if (largestChange < 1e-8) break;
+  }
+  return coefficients;
+}
+
+function calculateR2(actual: number[], predicted: number[]): number {
+  if (actual.length === 0) return Number.NaN;
+  const mean = actual.reduce((sum, value) => sum + value, 0) / actual.length;
+  const totalVariation = actual.reduce((sum, value) => sum + (value - mean) ** 2, 0);
+  if (totalVariation <= 0) return Number.NaN;
+  const residual = actual.reduce((sum, value, index) => sum + (value - predicted[index]) ** 2, 0);
+  return 1 - residual / totalVariation;
+}
+
+function modelConfidence(
+  recentTokenShare: number,
+  windows: number,
+  fitR2: number,
+  canEstimate: boolean,
+): "low" | "medium" | "high" {
+  if (!canEstimate) return "low";
+  if (recentTokenShare >= 0.15 && windows >= 6 && fitR2 >= 0.7) return "high";
+  if (recentTokenShare >= 0.05 && windows >= 4 && fitR2 >= 0.45) return "medium";
+  return "low";
 }
 
 function strongestForwardMovement(ordered: UsageSnapshot[]): {

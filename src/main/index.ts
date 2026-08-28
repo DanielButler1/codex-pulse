@@ -27,7 +27,11 @@ import { fetchProviderUsageNative } from "./services/provider-usage";
 import { ProviderSecretsStore } from "./services/provider-secrets";
 import { getAllTimeModelUsageHeatmap, getModelUsageSummary } from "./services/model-usage";
 import { updateModelUsageRollups } from "./services/model-usage-index";
-import { calculateUsageEfficiency, summarizeUsageEfficiency } from "./services/usage-efficiency";
+import {
+  calculateModelUsageEfficiency,
+  calculateUsageEfficiency,
+  summarizeUsageEfficiency,
+} from "./services/usage-efficiency";
 import { DAY_MS, USAGE_SNAPSHOT_RETENTION_MS } from "../../shared/retention";
 import { CodexUsageService } from "./services/codex-usage";
 import { fetchCodexResetCredits } from "./services/codex-reset-credits";
@@ -231,12 +235,11 @@ function registerIpc() {
     const controller = getModelUsageAbortController();
     await updateModelUsageRollups(db, controller.signal);
     const since = Date.now() - USAGE_SNAPSHOT_RETENTION_MS;
-    const current = calculateUsageEfficiency(
-      db.getLimitHistorySince(since),
-      db.getModelUsageRollupsSince(since),
-    );
+    const rollups = db.getModelUsageRollupsSince(since);
+    const current = calculateUsageEfficiency(db.getLimitHistorySince(since), rollups);
     db.replaceUsageEfficiencyWeeks(current.weeks, since + 7 * DAY_MS);
-    return summarizeUsageEfficiency(db.getUsageEfficiencyWeeks());
+    const summary = summarizeUsageEfficiency(db.getUsageEfficiencyWeeks());
+    return { ...summary, ...calculateModelUsageEfficiency(summary.weeks, rollups) };
   });
   ipcMain.handle(
     "codexPulse:getCodexResetCredits",
