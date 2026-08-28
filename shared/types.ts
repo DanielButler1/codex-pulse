@@ -227,6 +227,16 @@ export type UsageEfficiencyWeek = {
   observations: number;
 };
 
+export type UsageEfficiencyModelEstimate = {
+  model: string;
+  recentTokenShare: number;
+  observedTokens: number;
+  windows: number;
+  tokensPerPercent: number | null;
+  projectedWeeklyTokens: number | null;
+  confidence: "low" | "medium" | "high";
+};
+
 export type UsageEfficiencySummary = {
   generatedAt: number;
   tokensPerPercent: number | null;
@@ -235,5 +245,8 @@ export type UsageEfficiencySummary = {
   totalTokens: number;
   confidence: "low" | "medium" | "high";
   estimateWeeks: number;
+  modelFitR2: number | null;
+  modelEstimateWindows: number;
+  modelEstimates: UsageEfficiencyModelEstimate[];
   weeks: UsageEfficiencyWeek[];
 };

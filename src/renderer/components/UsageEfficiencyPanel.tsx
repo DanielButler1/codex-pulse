@@ -50,6 +50,48 @@ export function UsageEfficiencyPanel({ summary, loading }: Props) {
       </section>
 
       <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
+        <h3 className="text-lg font-semibold">By model</h3>
+        <p className="mt-1 text-sm text-neutral-400">
+          Recent token mix is measured directly. Model allowances are estimated jointly where enough usage variation exists.
+        </p>
+        {summary?.modelEstimates.length ? (
+          <div className="mt-5 overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead className="border-b border-neutral-800 text-xs uppercase tracking-[0.12em] text-neutral-500">
+                <tr>
+                  <th className="pb-3 font-medium">Model</th>
+                  <th className="pb-3 text-right font-medium">Recent mix</th>
+                  <th className="pb-3 text-right font-medium">Windows</th>
+                  <th className="pb-3 text-right font-medium">Tokens / 1%</th>
+                  <th className="pb-3 text-right font-medium">Weekly estimate</th>
+                  <th className="pb-3 text-right font-medium">Confidence</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-800/80">
+                {summary.modelEstimates.map((estimate) => (
+                  <tr key={estimate.model}>
+                    <td className="py-3 font-medium text-neutral-100">{formatModel(estimate.model)}</td>
+                    <td className="py-3 text-right text-neutral-300">{formatShare(estimate.recentTokenShare)}</td>
+                    <td className="py-3 text-right text-neutral-300">{estimate.windows}</td>
+                    <td className="py-3 text-right text-neutral-300">{formatTokens(estimate.tokensPerPercent)}</td>
+                    <td className="py-3 text-right font-medium text-neutral-100">{formatTokens(estimate.projectedWeeklyTokens)}</td>
+                    <td className="py-3 text-right text-neutral-300">{estimate.projectedWeeklyTokens == null ? "Insufficient data" : capitalize(estimate.confidence)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="mt-5 text-sm text-neutral-400">Not enough recent mixed-model usage to estimate model differences yet.</p>
+        )}
+        {summary?.modelFitR2 != null ? (
+          <p className="mt-4 text-xs text-neutral-500">
+            The model fit explains {formatShare(Math.max(0, summary.modelFitR2))} of observed usage movement across {summary.modelEstimateWindows} recent windows.
+          </p>
+        ) : null}
+      </section>
+
+      <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
         <h3 className="text-lg font-semibold">Estimated weekly tokens over time</h3>
         <p className="mt-1 text-sm text-neutral-400">
           Projected 100% allowance from non-overlapping weekly reset windows. Usage snapshots are retained for one year.
@@ -155,6 +197,14 @@ function formatTokens(value: number | null | undefined): string {
 
 function formatPercent(value: number): string {
   return `${value.toFixed(value < 10 ? 1 : 0)}%`;
+}
+
+function formatShare(value: number): string {
+  return new Intl.NumberFormat(undefined, { style: "percent", maximumFractionDigits: 0 }).format(value);
+}
+
+function formatModel(value: string): string {
+  return value === "unknown" ? "Unknown" : value;
 }
 
 function formatDateTime(value: number): string {
