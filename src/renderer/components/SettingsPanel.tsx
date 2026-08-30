@@ -1,15 +1,57 @@
-import type { ReactNode } from "react";
-import { CalendarDays, CreditCard, Monitor, MoonStar, SunMedium } from "lucide-react";
+import { useState, type ChangeEvent, type ReactNode } from "react";
+import {
+  CalendarDays,
+  Camera,
+  CreditCard,
+  Globe2,
+  Monitor,
+  MoonStar,
+  ShieldCheck,
+  SunMedium,
+  Trash2,
+} from "lucide-react";
 import { SUBSCRIPTION_PLAN_META } from "../../../shared/subscription-plans";
-import type { AppSettings } from "../lib/types";
+import type { AppSettings, LeaderboardSyncStatus } from "../lib/types";
 
 type SettingsPanelProps = {
   settings: AppSettings;
   onChange: (partial: Partial<AppSettings>) => void;
+  leaderboardSyncStatus: LeaderboardSyncStatus;
+  onSyncLeaderboard: () => void;
+  onDeleteLeaderboardEntry: () => void;
 };
 
-export function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
+export function SettingsPanel({ settings, onChange, leaderboardSyncStatus, onSyncLeaderboard, onDeleteLeaderboardEntry }: SettingsPanelProps) {
   const selectedPlan = SUBSCRIPTION_PLAN_META[settings.subscriptionPlan];
+  const [profileImageError, setProfileImageError] = useState<string | null>(null);
+  const leaderboardProfile = settings.leaderboardProfile;
+  const profileInitials = getInitials(leaderboardProfile.displayName);
+
+  const updateLeaderboardProfile = (
+    partial: Partial<AppSettings["leaderboardProfile"]>,
+  ) => {
+    const next = { ...leaderboardProfile, ...partial };
+    if (!next.displayName.trim()) {
+      next.sharingEnabled = false;
+    }
+    onChange({ leaderboardProfile: next });
+  };
+
+  const onProfileImageSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) {
+      return;
+    }
+
+    try {
+      setProfileImageError(null);
+      const avatarDataUrl = await resizeProfileImage(file);
+      updateLeaderboardProfile({ avatarDataUrl });
+    } catch (error) {
+      setProfileImageError(error instanceof Error ? error.message : "Could not use that image.");
+    }
+  };
 
   return (
     <section className="space-y-5">
@@ -182,6 +224,127 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
           </div>
         </section>
       </div>
+
+      <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl border border-violet-500/20 bg-violet-500/10 p-2 text-violet-300">
+              <Globe2 className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-neutral-100">Community leaderboard</h3>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-neutral-400">
+                Create the public profile that will accompany your opt-in aggregate usage totals.
+              </p>
+            </div>
+          </div>
+          <div className={`rounded-full px-3 py-1 text-xs font-semibold ${leaderboardProfile.sharingEnabled ? "bg-emerald-500/15 text-emerald-300" : "bg-neutral-800 text-neutral-400"}`}>
+            {leaderboardProfile.sharingEnabled ? "Opted in locally" : "Private"}
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
+            <div className="flex items-center gap-4">
+              <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-2xl border border-neutral-700 bg-neutral-900 text-lg font-semibold text-neutral-300">
+                {leaderboardProfile.avatarDataUrl ? (
+                  <img
+                    src={leaderboardProfile.avatarDataUrl}
+                    alt="Leaderboard profile"
+                    className="h-full w-full object-cover"
+                  />
+                ) : profileInitials}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-base font-semibold text-neutral-100">
+                  {leaderboardProfile.displayName || "Your public name"}
+                </p>
+                <p className="mt-1 text-sm text-neutral-500">Codex Pulse community profile</p>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-medium text-neutral-200 transition hover:border-neutral-600">
+                <Camera className="h-4 w-4" />
+                Choose photo
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="sr-only"
+                  onChange={onProfileImageSelected}
+                />
+              </label>
+              {leaderboardProfile.avatarDataUrl ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-xl border border-neutral-800 px-3 py-2 text-sm text-neutral-400 transition hover:border-red-500/40 hover:text-red-300"
+                  onClick={() => updateLeaderboardProfile({ avatarDataUrl: "" })}
+                >
+                  <Trash2 className="h-4 w-4" /> Remove
+                </button>
+              ) : null}
+            </div>
+            {profileImageError ? <p className="mt-3 text-sm text-red-300">{profileImageError}</p> : null}
+            <p className="mt-3 text-xs leading-5 text-neutral-500">PNG, JPEG, or WebP. Images are cropped and resized on this device.</p>
+          </div>
+
+          <div className="space-y-4">
+            <label className="flex flex-col gap-2 text-sm text-neutral-300">
+              <span className="font-medium text-neutral-200">Public display name</span>
+              <input
+                type="text"
+                maxLength={40}
+                placeholder="e.g. Daniel or @builder"
+                className="rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-3 text-neutral-100 outline-none ring-violet-400 transition focus:ring-2"
+                value={leaderboardProfile.displayName}
+                onChange={(event) => updateLeaderboardProfile({ displayName: event.target.value })}
+              />
+              <span className="text-xs text-neutral-500">Use a real name or a handle. Your Codex email is never shown.</span>
+            </label>
+
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-neutral-200">
+                <ShieldCheck className="h-4 w-4 text-emerald-300" /> What will be shared
+              </div>
+              <p className="mt-2 text-sm leading-6 text-neutral-400">
+                All-time tokens and estimated spend, plus today&apos;s tokens and estimated spend.
+                Never prompts, code, file paths, repository names, raw session logs, email, or
+                Codex credentials.
+              </p>
+            </div>
+
+            <ToggleCard
+              checked={leaderboardProfile.sharingEnabled}
+              disabled={!leaderboardProfile.displayName.trim()}
+              label="Join the community leaderboard"
+              description={leaderboardProfile.displayName.trim()
+                ? "I consent to these aggregate metrics and this public profile being shared on the Codex Pulse leaderboard."
+                : "Add a public display name before opting in."}
+              onChange={(sharingEnabled) => updateLeaderboardProfile({ sharingEnabled })}
+            />
+
+            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm leading-6 text-amber-100/70">
+              {leaderboardSyncStatus.state === "synced" && leaderboardSyncStatus.lastSyncAt
+                ? `Last uploaded ${new Date(leaderboardSyncStatus.lastSyncAt).toLocaleString()}. Automatic uploads run hourly.`
+                : leaderboardSyncStatus.state === "error"
+                  ? leaderboardSyncStatus.error
+                  : leaderboardProfile.sharingEnabled
+                    ? "Ready to upload. Automatic uploads run hourly while Codex Pulse is open."
+                    : "Nothing is uploaded until you join the leaderboard."}
+            </div>
+            {leaderboardProfile.sharingEnabled ? (
+              <div className="flex flex-wrap gap-2">
+                <button type="button" disabled={leaderboardSyncStatus.state === "syncing"} className="rounded-xl bg-violet-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" onClick={onSyncLeaderboard}>
+                  {leaderboardSyncStatus.state === "syncing" ? "Uploading…" : "Upload now"}
+                </button>
+                <button type="button" className="rounded-xl border border-red-500/30 px-4 py-2 text-sm font-medium text-red-300" onClick={onDeleteLeaderboardEntry}>
+                  Leave and delete my entry
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </section>
     </section>
   );
 }
@@ -221,20 +384,23 @@ function InfoTile({ label, value }: { label: string; value: string }) {
 
 function ToggleCard({
   checked,
+  disabled = false,
   label,
   description,
   onChange,
 }: {
   checked: boolean;
+  disabled?: boolean;
   label: string;
   description: string;
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-4">
+    <label className={`flex items-start gap-3 rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-4 ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
       <input
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         className="mt-1 h-4 w-4 rounded border-neutral-600 bg-neutral-900 text-emerald-500"
         onChange={(event) => onChange(event.target.checked)}
       />
@@ -253,4 +419,42 @@ function formatUsd(value: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+function getInitials(displayName: string): string {
+  const initials = displayName
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+  return initials || "CP";
+}
+
+async function resizeProfileImage(file: File): Promise<string> {
+  if (!file.type.match(/^image\/(?:png|jpeg|webp)$/)) {
+    throw new Error("Choose a PNG, JPEG, or WebP image.");
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error("Choose an image smaller than 5 MB.");
+  }
+
+  const bitmap = await createImageBitmap(file);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 256;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Could not prepare that image.");
+    }
+
+    const cropSize = Math.min(bitmap.width, bitmap.height);
+    const sourceX = (bitmap.width - cropSize) / 2;
+    const sourceY = (bitmap.height - cropSize) / 2;
+    context.drawImage(bitmap, sourceX, sourceY, cropSize, cropSize, 0, 0, 256, 256);
+    return canvas.toDataURL("image/jpeg", 0.86);
+  } finally {
+    bitmap.close();
+  }
 }

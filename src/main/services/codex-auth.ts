@@ -46,6 +46,21 @@ export function resolveCodexHome(): string {
   return process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
 }
 
+export async function getCodexPublicIdentity(): Promise<{ userId: string; name: string | null } | null> {
+  const auth = await loadCodexAuth();
+  if (auth.status !== "ok") return null;
+  const claims = decodeJwtPayload(auth.accessToken);
+  const authClaims = claims?.["https://api.openai.com/auth"];
+  const profileClaims = claims?.["https://api.openai.com/profile"];
+  const userId = authClaims && typeof authClaims === "object"
+    ? findFirstString(authClaims, new Set(["chatgpt_account_user_id", "chatgpt_user_id", "user_id"]))
+    : null;
+  const name = profileClaims && typeof profileClaims === "object"
+    ? findFirstString(profileClaims, new Set(["name"]))
+    : null;
+  return { userId: userId ?? auth.accountId ?? String(claims?.sub ?? ""), name };
+}
+
 export async function loadCodexAuth(): Promise<CodexAuthResult> {
   const codexHome = resolveCodexHome();
   const authPath = path.join(codexHome, "auth.json");

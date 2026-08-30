@@ -13,6 +13,7 @@ import type {
   AppUpdateState,
   CodexResetCreditsResult,
   HistoryRange,
+  LeaderboardSyncStatus,
   ModelUsageRange,
   UsageEfficiencySummary,
   ProviderConfigurationUpdate,
@@ -37,6 +38,7 @@ import { CodexUsageService } from "./services/codex-usage";
 import { fetchCodexResetCredits } from "./services/codex-reset-credits";
 import { UsageScheduler } from "./services/scheduler";
 import { AppUpdaterService } from "./services/updater";
+import { LeaderboardSyncService } from "./services/leaderboard-sync";
 import { TrayController } from "./tray";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -48,6 +50,7 @@ let settingsStore: SettingsStore | null = null;
 let providerSecretsStore: ProviderSecretsStore | null = null;
 let trayController: TrayController | null = null;
 let updaterService: AppUpdaterService | null = null;
+let leaderboardSyncService: LeaderboardSyncService | null = null;
 let isQuitting = false;
 let latestSnapshot: UsageSnapshot | null = null;
 let latestStatus: AppStatus | null = null;
@@ -146,6 +149,13 @@ async function bootstrap() {
   const dbPath = path.join(app.getPath("userData"), "codex-pulse.db");
   db = new UsageDatabase(dbPath);
 
+  leaderboardSyncService = new LeaderboardSyncService(
+    providerSecretsStore,
+    db,
+    () => latestSettings ?? DEFAULT_SETTINGS,
+    () => latestSnapshot,
+  );
+
   const usageService = new CodexUsageService();
   updaterService = new AppUpdaterService({
     onUpdateState: (state) => {
@@ -197,6 +207,10 @@ async function bootstrap() {
 
   createWindow();
   scheduler.start();
+  void leaderboardSyncService.sync(true);
+  setInterval(() => {
+    void leaderboardSyncService?.sync(true);
+  }, 60 * 60 * 1000);
 }
 
 function registerIpc() {
@@ -335,16 +349,37 @@ function registerIpc() {
     async () => latestSettings ?? settingsStore?.get() ?? DEFAULT_SETTINGS,
   );
   ipcMain.handle(
+    "codexPulse:getLeaderboardSyncStatus",
+    async (): Promise<LeaderboardSyncStatus> =>
+      leaderboardSyncService?.getStatus() ?? { state: "disabled", lastSyncAt: null, error: null },
+  );
+  ipcMain.handle(
+    "codexPulse:syncLeaderboardNow",
+    async (): Promise<LeaderboardSyncStatus> =>
+      leaderboardSyncService?.sync(true) ?? { state: "disabled", lastSyncAt: null, error: null },
+  );
+  ipcMain.handle(
+    "codexPulse:deleteLeaderboardEntry",
+    async (): Promise<LeaderboardSyncStatus> =>
+      leaderboardSyncService?.deleteEntry() ?? { state: "disabled", lastSyncAt: null, error: null },
+  );
+  ipcMain.handle(
     "codexPulse:updateSettings",
     async (_event, partial: Partial<AppSettings>) => {
       if (!settingsStore || !scheduler) {
         return;
       }
+      const wasSharing = latestSettings?.leaderboardProfile.sharingEnabled ?? false;
       latestSettings = settingsStore.update(partial);
       applyTheme(latestSettings.theme);
       configureAutoLaunch(latestSettings.startAtLogin);
       scheduler.updateSettings(latestSettings);
       trayController?.update(latestSnapshot, latestSettings.startAtLogin);
+      if (wasSharing && !latestSettings.leaderboardProfile.sharingEnabled) {
+        await leaderboardSyncService?.deleteEntry();
+      } else if (!wasSharing && latestSettings.leaderboardProfile.sharingEnabled) {
+        void leaderboardSyncService?.sync(true);
+      }
     },
   );
 }
@@ -477,7 +512,6 @@ function configureAutoLaunch(enabled: boolean) {
     app.setLoginItemSettings({ openAtLogin: false });
     return;
   }
-
   if (process.platform === "win32") {
     app.setLoginItemSettings({
       openAtLogin: enabled,
@@ -485,7 +519,6 @@ function configureAutoLaunch(enabled: boolean) {
     });
     return;
   }
-
   app.setLoginItemSettings({ openAtLogin: enabled, openAsHidden: enabled });
 }
 

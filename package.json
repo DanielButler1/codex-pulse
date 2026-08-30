@@ -9,6 +9,8 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "build:desktop": "electron-vite build",
+    "build:site": "node scripts/build-site.mjs",
     "dist": "electron-builder --publish never",
     "test": "node --test shared/*.test.ts",
     "typecheck": "tsc --noEmit",

@@ -5,6 +5,7 @@ import type {
   AppUpdateState,
   CodexResetCreditsResult,
   HistoryRange,
+  LeaderboardSyncStatus,
   ModelUsageHeatmapData,
   ModelUsageHeatmapProgress,
   ModelUsageRange,
@@ -79,6 +80,15 @@ const api = {
   },
   updateSettings(settings: Partial<AppSettings>): Promise<void> {
     return ipcRenderer.invoke("codexPulse:updateSettings", settings);
+  },
+  getLeaderboardSyncStatus(): Promise<LeaderboardSyncStatus> {
+    return ipcRenderer.invoke("codexPulse:getLeaderboardSyncStatus");
+  },
+  syncLeaderboardNow(): Promise<LeaderboardSyncStatus> {
+    return ipcRenderer.invoke("codexPulse:syncLeaderboardNow");
+  },
+  deleteLeaderboardEntry(): Promise<LeaderboardSyncStatus> {
+    return ipcRenderer.invoke("codexPulse:deleteLeaderboardEntry");
   },
   onUpdated(listener: () => void): () => void {
     const handler = () => listener();

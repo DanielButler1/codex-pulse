@@ -4,6 +4,7 @@ import type {
   AppUpdateState,
   CodexResetCreditsResult,
   HistoryRange,
+  LeaderboardSyncStatus,
   ModelUsageHeatmapData,
   ModelUsageHeatmapProgress,
   ModelUsageRange,
@@ -45,6 +46,12 @@ export const codexPulseApi = {
   getSettings: (): Promise<AppSettings> => window.codexPulse.getSettings(),
   updateSettings: (settings: Partial<AppSettings>): Promise<void> =>
     window.codexPulse.updateSettings(settings),
+  getLeaderboardSyncStatus: (): Promise<LeaderboardSyncStatus> =>
+    window.codexPulse.getLeaderboardSyncStatus(),
+  syncLeaderboardNow: (): Promise<LeaderboardSyncStatus> =>
+    window.codexPulse.syncLeaderboardNow(),
+  deleteLeaderboardEntry: (): Promise<LeaderboardSyncStatus> =>
+    window.codexPulse.deleteLeaderboardEntry(),
   subscribe(listener: () => void): (() => void) | null {
     if (!window.codexPulse.onUpdated) {
       return null;

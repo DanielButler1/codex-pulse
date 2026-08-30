@@ -83,6 +83,18 @@ export type ProviderConfigurationUpdate = {
   secrets?: ProviderSecretInput;
 };
 
+export type LeaderboardProfileSettings = {
+  displayName: string;
+  avatarDataUrl: string;
+  sharingEnabled: boolean;
+};
+
+export type LeaderboardSyncStatus = {
+  state: "disabled" | "ready" | "syncing" | "synced" | "error";
+  lastSyncAt: number | null;
+  error: string | null;
+};
+
 export type AppSettings = {
   pollIntervalSeconds: number;
   startAtLogin: boolean;
@@ -93,6 +105,7 @@ export type AppSettings = {
   subscriptionLastRenewalDate: string;
   projectionResetSource: "default" | "manual" | "custom";
   projectionResetAt: number | null;
+  leaderboardProfile: LeaderboardProfileSettings;
   providerSettings: Record<string, ProviderConnectionSettings>;
 };
 
