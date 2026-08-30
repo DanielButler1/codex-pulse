@@ -2,108 +2,32 @@
 
 import { useMemo, useState } from "react";
 
-type WindowKey = "week" | "all";
-type Leader = {
-  handle: string;
-  name: string;
-  accent: string;
-  spend: number;
-  weeklySpend: number;
-  tokens: number;
-  weeklyTokens: number;
-  activeDays: number;
-  lastActive: string;
-};
-
-const leaders: Leader[] = [
-  { handle: "kernelknight", name: "Mara K.", accent: "MK", spend: 412568, weeklySpend: 4825, tokens: 631170000000, weeklyTokens: 8020000000, activeDays: 322, lastActive: "Today" },
-  { handle: "shipshape", name: "Theo R.", accent: "TR", spend: 298741, weeklySpend: 4194, tokens: 267930000000, weeklyTokens: 7110000000, activeDays: 185, lastActive: "Today" },
-  { handle: "infrawizard", name: "Nia A.", accent: "NA", spend: 275380, weeklySpend: 3852, tokens: 243680000000, weeklyTokens: 6680000000, activeDays: 204, lastActive: "Today" },
-  { handle: "datamystic", name: "Ravi S.", accent: "RS", spend: 251489, weeklySpend: 3122, tokens: 222150000000, weeklyTokens: 5210000000, activeDays: 190, lastActive: "Yesterday" },
-  { handle: "potaotpilot", name: "Em J.", accent: "EJ", spend: 229175, weeklySpend: 2948, tokens: 198460000000, weeklyTokens: 4870000000, activeDays: 168, lastActive: "Today" },
-  { handle: "catbyte", name: "Sofia L.", accent: "SL", spend: 214532, weeklySpend: 2681, tokens: 187030000000, weeklyTokens: 4490000000, activeDays: 231, lastActive: "Today" },
-  { handle: "ironprompt", name: "Cal W.", accent: "CW", spend: 203914, weeklySpend: 2386, tokens: 173110000000, weeklyTokens: 4010000000, activeDays: 199, lastActive: "2 days ago" },
-  { handle: "debugbear", name: "Inez F.", accent: "IF", spend: 187863, weeklySpend: 2194, tokens: 163570000000, weeklyTokens: 3890000000, activeDays: 176, lastActive: "Today" },
-  { handle: "shadowdebug", name: "Owen B.", accent: "OB", spend: 176320, weeklySpend: 2045, tokens: 148720000000, weeklyTokens: 3510000000, activeDays: 151, lastActive: "Yesterday" },
-  { handle: "silentloop", name: "Aya D.", accent: "AD", spend: 159872, weeklySpend: 1896, tokens: 133540000000, weeklyTokens: 3290000000, activeDays: 210, lastActive: "Today" },
-];
-
+type WindowKey = "today" | "all";
+type Leader = { account_hash: string; display_name: string; avatar_data_url: string; all_time_tokens: number; all_time_cost_cents: number; today_tokens: number; today_cost_cents: number; updated_at: number };
 const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 2 });
-const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 
-export default function Leaderboard({ userName, signOut }: { userName: string; signOut: string }) {
+export default function Leaderboard({ entries }: { entries: Leader[] }) {
   const [windowKey, setWindowKey] = useState<WindowKey>("all");
   const [metric, setMetric] = useState<"tokens" | "spend">("tokens");
-
-  const ranked = useMemo(() => [...leaders].sort((a, b) => {
-    const key = windowKey === "week"
-      ? metric === "tokens" ? "weeklyTokens" : "weeklySpend"
-      : metric;
-    return Number(b[key]) - Number(a[key]);
-  }), [metric, windowKey]);
+  const ranked = useMemo(() => [...entries].sort((a, b) => {
+    const key = windowKey === "today" ? metric === "tokens" ? "today_tokens" : "today_cost_cents" : metric === "tokens" ? "all_time_tokens" : "all_time_cost_cents";
+    return b[key] - a[key];
+  }), [entries, metric, windowKey]);
+  const allTimeLeader = [...entries].sort((a, b) => b.all_time_tokens - a.all_time_tokens)[0];
+  const todayLeader = [...entries].sort((a, b) => b.today_tokens - a.today_tokens)[0];
 
   return <main className="leader-shell">
-    <header className="leader-topbar">
-      <a className="brand" href="/"><span className="mark" /> Codex Pulse</a>
-      <nav className="leader-nav" aria-label="Primary navigation">
-        <a href="/">My usage</a>
-        <span className="active">Leaderboard</span>
-      </nav>
-      <div className="leader-user"><span>{userName}</span><a href={signOut}>Sign out</a></div>
-    </header>
-
-    <section className="leader-hero">
-      <div>
-        <div className="eyebrow">Community / opt-in preview</div>
-        <h1>Who is pushing<br />Codex the furthest?</h1>
-      </div>
-      <p>Compare aggregate usage without exposing prompts, code, or session history. Every future live entry will be opt-in and independently revocable.</p>
+    <header className="leader-topbar"><a className="brand" href="/"><span className="mark" /> Codex Pulse</a><nav className="leader-nav" aria-label="Primary navigation"><a href="/">My usage</a><span className="active">Leaderboard</span></nav><div className="leader-user"><span>Updated hourly</span></div></header>
+    <section className="leader-hero"><div><div className="eyebrow">Community / opt-in</div><h1>Who is pushing<br />Codex the furthest?</h1></div><p>Real aggregate totals uploaded by Codex Pulse. Prompts, code, file paths, repositories, email, and raw session logs never leave the device.</p></section>
+    <section className="record-grid" aria-label="Community records"><article className="record lime-record"><span>All-time token leader</span><strong>{allTimeLeader ? compact.format(allTimeLeader.all_time_tokens) : "—"}</strong><small>{allTimeLeader?.display_name ?? "Waiting for the first opt-in"}</small></article><article className="record"><span>Today’s token leader</span><strong>{todayLeader ? compact.format(todayLeader.today_tokens) : "—"}</strong><small>{todayLeader?.display_name ?? "No uploads yet today"}</small></article><article className="record"><span>Community builders</span><strong>{entries.length}</strong><small>sharing aggregate usage</small></article></section>
+    <section className="leader-card"><div className="leader-card-head"><div><div className="preview-pill">Live data</div><h2>Global leaderboard</h2><p>Spend is an API-equivalent estimate calculated locally by Codex Pulse.</p></div><div className="leader-controls" aria-label="Leaderboard filters"><div className="segmented"><button className={metric === "tokens" ? "selected" : ""} onClick={() => setMetric("tokens")}>Tokens</button><button className={metric === "spend" ? "selected" : ""} onClick={() => setMetric("spend")}>Spend</button></div><div className="segmented"><button className={windowKey === "today" ? "selected" : ""} onClick={() => setWindowKey("today")}>Today</button><button className={windowKey === "all" ? "selected" : ""} onClick={() => setWindowKey("all")}>All time</button></div></div></div>
+      <div className="table-wrap"><table><thead><tr><th>#</th><th>Builder</th><th>Est. spend</th><th>Tokens</th><th>Last upload</th></tr></thead><tbody>{ranked.length ? ranked.map((leader, index) => <tr key={leader.account_hash}><td><span className={`rank rank-${index + 1}`}>{index + 1}</span></td><td><div className="builder">{leader.avatar_data_url ? <img className="avatar" src={leader.avatar_data_url} alt="" /> : <span className="avatar">{initials(leader.display_name)}</span>}<span><strong>{leader.display_name}</strong><small>Codex Pulse</small></span></div></td><td>{money.format((windowKey === "today" ? leader.today_cost_cents : leader.all_time_cost_cents) / 100)}</td><td>{compact.format(windowKey === "today" ? leader.today_tokens : leader.all_time_tokens)}</td><td>{formatUpdated(leader.updated_at)}</td></tr>) : <tr><td colSpan={5}>No one has opted in yet. Enable Community leaderboard in Codex Pulse Settings to claim the first spot.</td></tr>}</tbody></table></div>
     </section>
-
-    <section className="record-grid" aria-label="Community records">
-      <article className="record lime-record"><span>Longest single session</span><strong>18h 42m</strong><small>kernelknight · preview</small></article>
-      <article className="record"><span>Fastest plan burn</span><strong>3h 19m</strong><small>shipshape · preview</small></article>
-      <article className="record"><span>Most active days</span><strong>322</strong><small>kernelknight · preview</small></article>
-    </section>
-
-    <section className="leader-card">
-      <div className="leader-card-head">
-        <div><div className="preview-pill">Preview data</div><h2>Global leaderboard</h2><p>Numbers below demonstrate the experience; they are not real user totals.</p></div>
-        <div className="leader-controls" aria-label="Leaderboard filters">
-          <div className="segmented">
-            <button className={metric === "tokens" ? "selected" : ""} onClick={() => setMetric("tokens")}>Tokens</button>
-            <button className={metric === "spend" ? "selected" : ""} onClick={() => setMetric("spend")}>Spend</button>
-          </div>
-          <div className="segmented">
-            <button className={windowKey === "week" ? "selected" : ""} onClick={() => setWindowKey("week")}>7 days</button>
-            <button className={windowKey === "all" ? "selected" : ""} onClick={() => setWindowKey("all")}>All time</button>
-          </div>
-        </div>
-      </div>
-
-      <div className="table-wrap">
-        <table>
-          <thead><tr><th>#</th><th>Builder</th><th>Est. spend</th><th>Tokens</th><th>Active days</th><th>Last active</th></tr></thead>
-          <tbody>{ranked.map((leader, index) => <tr key={leader.handle}>
-            <td><span className={`rank rank-${index + 1}`}>{index + 1}</span></td>
-            <td><div className="builder"><span className="avatar">{leader.accent}</span><span><strong>{leader.handle}</strong><small>{leader.name}</small></span></div></td>
-            <td>{money.format(windowKey === "week" ? leader.weeklySpend : leader.spend)}</td>
-            <td>{compact.format(windowKey === "week" ? leader.weeklyTokens : leader.tokens)}</td>
-            <td>{leader.activeDays}</td>
-            <td>{leader.lastActive}</td>
-          </tr>)}</tbody>
-        </table>
-      </div>
-    </section>
-
-    <section className="verification">
-      <div><div className="eyebrow">Privacy boundary</div><h2>Only the totals leave your device.</h2></div>
-      <div className="verification-steps">
-        <p><span>01</span><strong>You opt in</strong> from the desktop app.</p>
-        <p><span>02</span><strong>Pulse signs aggregates</strong> such as token totals, active days, and plan-burn duration.</p>
-        <p><span>03</span><strong>You can leave anytime</strong> and remove the public entry without deleting local history.</p>
-      </div>
-    </section>
-    <footer>Codex Pulse community preview · private by default</footer>
+    <section className="verification"><div><div className="eyebrow">Privacy boundary</div><h2>Only four usage totals leave your device.</h2></div><div className="verification-steps"><p><span>01</span><strong>You opt in</strong> and choose a public name and photo.</p><p><span>02</span><strong>Pulse uploads hourly</strong> with all-time and today’s tokens and estimated spend.</p><p><span>03</span><strong>Leave anytime</strong> to delete the hosted entry without touching local history.</p></div></section>
+    <footer>Codex Pulse community leaderboard · private by default</footer>
   </main>;
 }
+
+function initials(name: string) { return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "CP"; }
+function formatUpdated(value: number) { const minutes = Math.max(0, Math.round((Date.now() - value) / 60000)); if (minutes < 2) return "Just now"; if (minutes < 60) return `${minutes}m ago`; const hours = Math.round(minutes / 60); return hours < 24 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`; }

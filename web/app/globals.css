@@ -97,6 +97,7 @@ tbody tr:hover { background:#17201d; }
 .rank-3 { background:#e4a877; }
 .builder { display:flex; align-items:center; gap:10px; font-family:'Space Grotesk',sans-serif; }
 .builder .avatar { width:34px; height:34px; display:grid; place-items:center; border-radius:11px; color:#d6f897; background:linear-gradient(135deg,#344a40,#202a26); font:600 10px 'DM Mono',monospace; }
+.builder img.avatar { object-fit:cover; }
 .builder strong,.builder small { display:block; }
 .builder strong { color:#eef6f2; font-size:12px; }
 .builder small { color:#66766f; margin-top:2px; font-size:10px; }
