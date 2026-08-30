@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Codex Pulse",
-  description: "Private usage intelligence for Codex and connected providers.",
+  description: "Private Codex usage intelligence with an opt-in community leaderboard.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

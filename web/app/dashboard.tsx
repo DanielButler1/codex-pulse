@@ -38,7 +38,7 @@ export default function Dashboard({ userName, userEmail, signOut }:{userName:str
   const nextReset = useMemo(() => saved.resets.filter(item => item.at).sort((a,b) => a.at.localeCompare(b.at))[0], [saved.resets]);
 
   return <main className="shell">
-    <header className="topbar"><div className="brand"><div className="mark" /> Codex Pulse</div><div className="user"><span>{userName} · {userEmail}</span><a href={signOut}>Sign out</a></div></header>
+    <header className="topbar"><div className="brand"><div className="mark" /> Codex Pulse</div><div className="user"><a className="nav-link" href="/leaderboard">Leaderboard</a><span>{userName} · {userEmail}</span><a href={signOut}>Sign out</a></div></header>
     <section className="intro"><div><div className="eyebrow">Private telemetry / manual mode</div><h1>Your usage, without the guesswork.</h1><p>Keep the useful part of Codex Pulse online without depending on rotating machine credentials. Enter the percentages you see and keep your reset schedule in one place.</p></div><div className="sync"><span />{hydrated ? "SAVED IN THIS BROWSER" : "LOADING LOCAL DATA"}</div></section>
     <section className="grid">
       <article className="card metric accent"><div className="eyebrow">Primary window</div><h2 className="metric-value">{primaryUsed == null ? "—" : pct(String(100 - primaryUsed))}</h2><p>capacity remaining</p></article>
