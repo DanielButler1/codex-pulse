@@ -21,11 +21,17 @@ export default function Dashboard({ userName, userEmail, signOut }:{userName:str
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem("codex-pulse-manual-data");
-      if (raw) setSaved({ ...seed, ...JSON.parse(raw), resets: JSON.parse(raw).resets ?? seed.resets });
-    } catch { /* use the empty manual state */ }
-    setHydrated(true);
+    const timer = window.setTimeout(() => {
+      try {
+        const raw = window.localStorage.getItem("codex-pulse-manual-data");
+        if (raw) {
+          const parsed = JSON.parse(raw) as Partial<Saved>;
+          setSaved({ ...seed, ...parsed, resets: parsed.resets ?? seed.resets });
+        }
+      } catch { /* use the empty manual state */ }
+      setHydrated(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const update = (next: Partial<Saved>) => setSaved(current => ({ ...current, ...next }));

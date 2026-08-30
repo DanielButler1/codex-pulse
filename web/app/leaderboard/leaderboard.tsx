@@ -1,5 +1,8 @@
 "use client";
 
+/* Leaderboard avatars are user-provided data URLs and intentionally bypass image optimization. */
+/* eslint-disable @next/next/no-html-link-for-pages, @next/next/no-img-element */
+
 import { useMemo, useState } from "react";
 
 type WindowKey = "today" | "all";

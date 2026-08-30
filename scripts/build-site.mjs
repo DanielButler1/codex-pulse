@@ -4,7 +4,10 @@ import process from "node:process";
 
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const run = (args) => new Promise((resolve, reject) => {
-  const child = spawn(npm, args, { stdio: "inherit", shell: false });
+  const child = spawn(npm, args, {
+    stdio: "inherit",
+    shell: process.platform === "win32",
+  });
   child.on("error", reject);
   child.on("exit", (code) => code === 0 ? resolve() : reject(new Error(`web build exited with ${code}`)));
 });

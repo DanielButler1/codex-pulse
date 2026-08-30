@@ -307,9 +307,9 @@ export function SettingsPanel({ settings, onChange, leaderboardSyncStatus, onSyn
                 <ShieldCheck className="h-4 w-4 text-emerald-300" /> What will be shared
               </div>
               <p className="mt-2 text-sm leading-6 text-neutral-400">
-                Aggregate token counts, estimated cost, request counts, active days, model totals,
-                session counts, and record durations. Never prompts, code, file paths, repository
-                names, raw session logs, email, or Codex credentials.
+                All-time tokens and estimated spend, plus today&apos;s tokens and estimated spend.
+                Never prompts, code, file paths, repository names, raw session logs, email, or
+                Codex credentials.
               </p>
             </div>
 

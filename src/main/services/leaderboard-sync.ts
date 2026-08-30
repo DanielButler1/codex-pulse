@@ -73,8 +73,8 @@ export class LeaderboardSyncService {
       const usageHistory = this.db.getSnapshotsSince(0);
       const weeklyUsed = this.getLatestSnapshot()?.secondaryUsedPercent ?? null;
       const [allTime, today] = await Promise.all([
-        getModelUsageSummary("all", undefined, weeklyUsed, usageHistory),
-        getModelUsageSummary("sub_period", todayStart, weeklyUsed, usageHistory),
+        getModelUsageSummary(this.db, "all", undefined, weeklyUsed, usageHistory),
+        getModelUsageSummary(this.db, "sub_period", todayStart, weeklyUsed, usageHistory),
       ]);
       const response = await fetch(`${LEADERBOARD_ORIGIN}/api/leaderboard/sync`, {
         method: "PUT",
