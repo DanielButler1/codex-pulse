@@ -36,6 +36,7 @@ import type {
   AppStatus,
   AppUpdateState,
   CodexResetCreditsResult,
+  LeaderboardSyncStatus,
   ModelUsageHeatmapData,
   ModelUsageHeatmapProgress,
   ModelUsageRange,
@@ -54,6 +55,11 @@ const DEFAULT_SETTINGS: AppSettings = {
   subscriptionLastRenewalDate: "",
   projectionResetSource: "default",
   projectionResetAt: null,
+  leaderboardProfile: {
+    displayName: "",
+    avatarDataUrl: "",
+    sharingEnabled: false,
+  },
   providerSettings: Object.fromEntries(
     PROVIDER_IDS.map((providerId) => [
       providerId,
@@ -142,6 +148,7 @@ export default function App() {
   const [latest, setLatest] = useState<UsageSnapshot | null>(null);
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [leaderboardSyncStatus, setLeaderboardSyncStatus] = useState<LeaderboardSyncStatus>({ state: "disabled", lastSyncAt: null, error: null });
   const [loading, setLoading] = useState(true);
   const [modelUsageLoading, setModelUsageLoading] = useState(false);
   const [updateState, setUpdateState] = useState<AppUpdateState | null>(null);
@@ -173,7 +180,10 @@ export default function App() {
   }, []);
 
   const loadSettings = useCallback(async () => {
-    const currentSettings = await codexPulseApi.getSettings();
+    const [currentSettings, syncStatus] = await Promise.all([
+      codexPulseApi.getSettings(),
+      codexPulseApi.getLeaderboardSyncStatus(),
+    ]);
     setSettings(currentSettings);
     setProjectionResetSource(currentSettings.projectionResetSource);
     setCustomProjectionReset(
@@ -181,7 +191,20 @@ export default function App() {
         ? toDateTimeLocalValue(currentSettings.projectionResetAt)
         : "",
     );
+    setLeaderboardSyncStatus(syncStatus);
   }, []);
+
+  const onSyncLeaderboard = useCallback(async () => {
+    setLeaderboardSyncStatus((current) => ({ ...current, state: "syncing", error: null }));
+    setLeaderboardSyncStatus(await codexPulseApi.syncLeaderboardNow());
+  }, []);
+
+  const onDeleteLeaderboardEntry = useCallback(async () => {
+    setLeaderboardSyncStatus(await codexPulseApi.deleteLeaderboardEntry());
+    const profile = { ...settings.leaderboardProfile, sharingEnabled: false };
+    setSettings((current) => ({ ...current, leaderboardProfile: profile }));
+    await codexPulseApi.updateSettings({ leaderboardProfile: profile });
+  }, [settings.leaderboardProfile]);
 
   const loadUpdateState = useCallback(async () => {
     const state = await codexPulseApi.getUpdateState();
@@ -792,6 +815,9 @@ export default function App() {
             <SettingsPanel
               settings={settings}
               onChange={onSettingsChange}
+              leaderboardSyncStatus={leaderboardSyncStatus}
+              onSyncLeaderboard={onSyncLeaderboard}
+              onDeleteLeaderboardEntry={onDeleteLeaderboardEntry}
             />
           ) : (
             <>

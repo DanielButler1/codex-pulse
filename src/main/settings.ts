@@ -32,6 +32,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   subscriptionLastRenewalDate: "",
   projectionResetSource: "default",
   projectionResetAt: null,
+  leaderboardProfile: {
+    displayName: "",
+    avatarDataUrl: "",
+    sharingEnabled: false,
+  },
   providerSettings: buildDefaultProviderSettings(),
 };
 
@@ -110,6 +115,7 @@ function sanitizeSettings(input: SettingsFile): AppSettings {
     subscriptionPlan: sanitizeSubscriptionPlan(input.subscriptionPlan),
     subscriptionLastRenewalDate: sanitizeRenewalDate(input.subscriptionLastRenewalDate),
     ...sanitizeProjectionReset(input.projectionResetSource, input.projectionResetAt),
+    leaderboardProfile: sanitizeLeaderboardProfile(input.leaderboardProfile),
     providerSettings,
   };
 }
@@ -127,6 +133,28 @@ function sanitizeProjectionReset(
     return { projectionResetSource: source, projectionResetAt: resetAt };
   }
   return { projectionResetSource: "default", projectionResetAt: null };
+}
+
+function sanitizeLeaderboardProfile(
+  value: Partial<AppSettings["leaderboardProfile"]> | undefined,
+): AppSettings["leaderboardProfile"] {
+  const displayName = typeof value?.displayName === "string"
+    ? value.displayName.trim().replace(/\s+/g, " ").slice(0, 40)
+    : "";
+  const avatarDataUrl = sanitizeAvatarDataUrl(value?.avatarDataUrl);
+
+  return {
+    displayName,
+    avatarDataUrl,
+    sharingEnabled: displayName.length > 0 && value?.sharingEnabled === true,
+  };
+}
+
+function sanitizeAvatarDataUrl(value: string | undefined): string {
+  if (typeof value !== "string" || value.length > 500_000) {
+    return "";
+  }
+  return /^data:image\/(?:jpeg|png|webp);base64,[a-z0-9+/=]+$/i.test(value) ? value : "";
 }
 
 function sanitizeSubscriptionPlan(value: AppSettings["subscriptionPlan"] | undefined): AppSettings["subscriptionPlan"] {
@@ -184,6 +212,7 @@ function sanitizeString(value: string | undefined): string {
 function cloneSettings(settings: AppSettings): AppSettings {
   return {
     ...settings,
+    leaderboardProfile: { ...settings.leaderboardProfile },
     providerSettings: Object.fromEntries(
       Object.entries(settings.providerSettings).map(([providerId, providerSettings]) => [
         providerId,

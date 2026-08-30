@@ -4,6 +4,7 @@ import type {
   AppUpdateState,
   CodexResetCreditsResult,
   HistoryRange,
+  LeaderboardSyncStatus,
   ModelUsageHeatmapData,
   ModelUsageHeatmapProgress,
   ModelUsageHeatmapCell,
@@ -25,6 +26,7 @@ export type {
   AppUpdateState,
   CodexResetCreditsResult,
   HistoryRange,
+  LeaderboardSyncStatus,
   ModelUsageHeatmapData,
   ModelUsageHeatmapProgress,
   ModelUsageHeatmapCell,
@@ -64,6 +66,9 @@ declare global {
       clearUpdateSimulation(): Promise<AppUpdateState>;
       getSettings(): Promise<AppSettings>;
       updateSettings(settings: Partial<AppSettings>): Promise<void>;
+      getLeaderboardSyncStatus(): Promise<LeaderboardSyncStatus>;
+      syncLeaderboardNow(): Promise<LeaderboardSyncStatus>;
+      deleteLeaderboardEntry(): Promise<LeaderboardSyncStatus>;
       onUpdated?: (listener: () => void) => () => void;
       onUpdateState?: (listener: () => void) => () => void;
       onModelUsageHeatmapProgress?: (listener: (progress: ModelUsageHeatmapProgress) => void) => () => void;
