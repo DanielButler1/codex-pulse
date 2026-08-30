@@ -1,7 +1,6 @@
 import { env } from "cloudflare:workers";
 
 export type LeaderboardEntry = {
-  account_hash: string;
   display_name: string;
   avatar_data_url: string;
   all_time_tokens: number;
