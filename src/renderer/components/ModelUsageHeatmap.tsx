@@ -8,6 +8,31 @@ type ModelUsageHeatmapProps = {
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const HOUR_LABELS = Array.from({ length: 24 }, (_, hour) => hour);
+const HEATMAP_COLORS = [
+  "#262626",
+  "#022c22",
+  "#064e3b",
+  "#065f46",
+  "#047857",
+  "#059669",
+  "#10b981",
+  "#34d399",
+  "#6ee7b7",
+  "#d97706",
+];
+const HEATMAP_BORDER_COLORS = [
+  "#404040",
+  "#064e3b",
+  "#065f46",
+  "#047857",
+  "#059669",
+  "#10b981",
+  "#34d399",
+  "#6ee7b7",
+  "#a7f3d0",
+  "#fbbf24",
+];
+const HEATMAP_LEVELS = HEATMAP_COLORS.length - 1;
 
 export function ModelUsageHeatmap({ heatmap, loading }: ModelUsageHeatmapProps) {
   const sectionRef = useRef<HTMLDivElement | null>(null);
@@ -21,9 +46,9 @@ export function ModelUsageHeatmap({ heatmap, loading }: ModelUsageHeatmapProps) 
       .filter((cell) => cell.totalTokens > 0)
       .map((cell) => cell.totalTokens)
       .sort((left, right) => left - right);
-    const lowAnchor = pickPercentile(positiveValues, 0.1) ?? positiveValues[0] ?? 0;
     const highAnchor = pickPercentile(positiveValues, 0.95) ?? maxTokens;
     const totalTokens = cells.reduce((sum, cell) => sum + cell.totalTokens, 0);
+    const highShare = totalTokens > 0 ? highAnchor / totalTokens : 0;
     const activeCells = cells.filter((cell) => cell.totalTokens > 0).length;
 
     let peakCell = cells[0] ?? null;
@@ -42,8 +67,7 @@ export function ModelUsageHeatmap({ heatmap, loading }: ModelUsageHeatmapProps) 
     return {
       rows,
       maxTokens,
-      lowAnchor,
-      highAnchor,
+      highShare,
       totalTokens,
       activeCells,
       peakCell,
@@ -56,14 +80,10 @@ export function ModelUsageHeatmap({ heatmap, loading }: ModelUsageHeatmapProps) 
         <div>
           <h3 className="text-sm font-medium text-neutral-100">Usage heatmap</h3>
           <p className="text-xs text-neutral-400">
-            All-time token intensity by weekday and hour, shown on a compressed scale.
+            All-time token share by weekday and hour, grouped into nine distinct color levels.
           </p>
         </div>
-        <div className="flex items-center gap-3 text-[11px] text-neutral-400">
-          <span>Low</span>
-          <div className="h-2 w-28 rounded-full border border-neutral-700 bg-gradient-to-r from-neutral-800 via-emerald-900 to-emerald-400" />
-          <span>High</span>
-        </div>
+        {heatmapData.maxTokens > 0 ? <HeatmapLegend highShare={heatmapData.highShare} /> : null}
       </div>
 
       {loading ? (
@@ -93,8 +113,7 @@ export function ModelUsageHeatmap({ heatmap, loading }: ModelUsageHeatmapProps) 
                       dayIndex={row.dayIndex}
                       cells={row.cells}
                       totalTokens={heatmapData.totalTokens}
-                      lowAnchor={heatmapData.lowAnchor}
-                      highAnchor={heatmapData.highAnchor}
+                      highShare={heatmapData.highShare}
                       onHover={setHoveredCell}
                       onClearHover={() => setHoveredCell(null)}
                       sectionRef={sectionRef}
@@ -139,8 +158,7 @@ function HeatmapRow({
   dayIndex,
   cells,
   totalTokens,
-  lowAnchor,
-  highAnchor,
+  highShare,
   onHover,
   onClearHover,
   sectionRef,
@@ -149,8 +167,7 @@ function HeatmapRow({
   dayIndex: number;
   cells: Array<ModelUsageHeatmapCell | null>;
   totalTokens: number;
-  lowAnchor: number;
-  highAnchor: number;
+  highShare: number;
   onHover: (state: HeatmapTooltipState) => void;
   onClearHover: () => void;
   sectionRef: { current: HTMLDivElement | null };
@@ -162,16 +179,10 @@ function HeatmapRow({
       </div>
       {cells.map((cell, hour) => {
         const value = cell?.totalTokens ?? 0;
-        const intensity = value > 0 ? getCompressedIntensity(value, lowAnchor, highAnchor) : 0;
         const shareOfTotal = totalTokens > 0 ? value / totalTokens : 0;
-        const backgroundColor =
-          value > 0
-            ? `rgba(16, 185, 129, ${0.12 + intensity * 0.76})`
-            : "rgba(38, 38, 38, 0.72)";
-        const borderColor =
-          value > 0
-            ? `rgba(16, 185, 129, ${0.15 + intensity * 0.32})`
-            : "rgba(64, 64, 64, 0.75)";
+        const level = getHeatmapLevel(shareOfTotal, highShare);
+        const backgroundColor = HEATMAP_COLORS[level];
+        const borderColor = HEATMAP_BORDER_COLORS[level];
 
         return (
           <button
@@ -184,7 +195,7 @@ function HeatmapRow({
                   hour,
                   value,
                   shareOfTotal,
-                  intensity,
+                  level,
                 }),
               );
             }}
@@ -195,7 +206,7 @@ function HeatmapRow({
                   hour,
                   value,
                   shareOfTotal,
-                  intensity,
+                  level,
                 }),
               );
             }}
@@ -207,19 +218,19 @@ function HeatmapRow({
                   hour,
                   value,
                   shareOfTotal,
-                  intensity,
+                  level,
                 }),
               );
             }}
             onBlur={onClearHover}
             className="h-7 rounded-md border transition duration-150 hover:-translate-y-px hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-            aria-label={buildAriaLabel(dayIndex, hour, value, shareOfTotal, intensity)}
+            aria-label={buildAriaLabel(dayIndex, hour, value, shareOfTotal, level)}
             style={{
               backgroundColor,
               borderColor,
             }}
           >
-            <span className="sr-only">{buildAriaLabel(dayIndex, hour, value, shareOfTotal, intensity)}</span>
+            <span className="sr-only">{buildAriaLabel(dayIndex, hour, value, shareOfTotal, level)}</span>
           </button>
         );
       })}
@@ -241,17 +252,39 @@ function formatPeakLabel(cell: { dayIndex: number; hour: number } | null): strin
   return `${DAY_LABELS[cell.dayIndex]} ${String(cell.hour).padStart(2, "0")}:00`;
 }
 
-function getCompressedIntensity(value: number, lowAnchor: number, highAnchor: number): number {
-  const safeLow = Math.max(1, lowAnchor);
-  const safeHigh = Math.max(safeLow + 1, highAnchor);
-  const lowLog = Math.log10(safeLow);
-  const highLog = Math.log10(safeHigh);
-  const valueLog = Math.log10(Math.max(1, value));
-  if (!Number.isFinite(lowLog) || !Number.isFinite(highLog) || highLog <= lowLog) {
-    return 1;
+function getHeatmapLevel(shareOfTotal: number, highShare: number): number {
+  if (shareOfTotal <= 0 || !Number.isFinite(shareOfTotal)) {
+    return 0;
   }
-  const normalized = (valueLog - lowLog) / (highLog - lowLog);
-  return Math.max(0, Math.min(1, normalized));
+  if (highShare <= 0 || !Number.isFinite(highShare)) {
+    return HEATMAP_LEVELS;
+  }
+
+  // A square-root curve gives lower-usage slots more visual separation while the
+  // 95th-percentile cap prevents one unusually busy slot from flattening the scale.
+  const normalized = Math.sqrt(Math.min(1, shareOfTotal / highShare));
+  return Math.max(1, Math.min(HEATMAP_LEVELS, Math.ceil(normalized * HEATMAP_LEVELS)));
+}
+
+function HeatmapLegend({ highShare }: { highShare: number }) {
+  return (
+    <div className="text-[10px] text-neutral-500" aria-label={`Heatmap color scale from 0% to ${formatRatio(highShare)}`}>
+      <div className="mb-1 text-right">Share of total</div>
+      <div className="flex items-center gap-2">
+        <span>0%</span>
+        <div className="flex gap-1">
+          {HEATMAP_COLORS.slice(1).map((color, index) => (
+            <span
+              key={color}
+              className="h-2.5 w-4 rounded-sm border"
+              style={{ backgroundColor: color, borderColor: HEATMAP_BORDER_COLORS[index + 1] }}
+            />
+          ))}
+        </div>
+        <span>{formatRatio(highShare)}+</span>
+      </div>
+    </div>
+  );
 }
 
 function pickPercentile(values: number[], percentile: number): number | null {
@@ -268,7 +301,7 @@ type HeatmapTooltipState = {
   tokens: string;
   rawTokens: string;
   shareOfTotal: string;
-  intensity: string;
+  level: string;
   left: number;
   top: number;
   placement: "top" | "bottom";
@@ -282,7 +315,7 @@ function buildTooltipState(
     hour: number;
     value: number;
     shareOfTotal: number;
-    intensity: number;
+    level: number;
   },
 ): HeatmapTooltipState {
   const section = sectionRef.current?.getBoundingClientRect();
@@ -303,7 +336,7 @@ function buildTooltipState(
     tokens: formatCompactInt(params.value),
     rawTokens: new Intl.NumberFormat().format(params.value),
     shareOfTotal: formatRatio(params.shareOfTotal),
-    intensity: `${Math.round(params.intensity * 100)}%`,
+    level: `${params.level} of ${HEATMAP_LEVELS}`,
     left,
     top,
     placement,
@@ -341,8 +374,8 @@ function HeatmapTooltip({ cell }: { cell: HeatmapTooltipState }) {
             <span className="font-medium text-neutral-100">{cell.shareOfTotal}</span>
           </div>
           <div className="flex items-center justify-between gap-4 text-neutral-300">
-            <span>Relative intensity</span>
-            <span className="font-medium text-neutral-100">{cell.intensity}</span>
+            <span>Color level</span>
+            <span className="font-medium text-neutral-100">{cell.level}</span>
           </div>
         </div>
       </div>
@@ -362,13 +395,13 @@ function buildAriaLabel(
   hour: number,
   value: number,
   shareOfTotal: number,
-  intensity: number,
+  level: number,
 ): string {
   return [
     `${DAY_LABELS[dayIndex]} ${String(hour).padStart(2, "0")}:00`,
     `${new Intl.NumberFormat().format(Math.max(0, value))} tokens`,
     `${formatRatio(shareOfTotal)} of all-time total`,
-    `${Math.round(Math.max(0, intensity) * 100)}% relative intensity`,
+    `color level ${level} of ${HEATMAP_LEVELS}`,
   ].join(", ");
 }
 
