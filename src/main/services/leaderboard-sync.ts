@@ -5,7 +5,7 @@ import type { ProviderSecretsStore } from "./provider-secrets";
 import { getCodexPublicIdentity } from "./codex-auth";
 import { getModelUsageSummary } from "./model-usage";
 
-const LEADERBOARD_ORIGIN = "https://codex-pulse-private.danielbutler1.chatgpt.site";
+const LEADERBOARD_ORIGIN = "https://codex-leaderboard.danielbutler1.chatgpt.site";
 const SECRET_ID = "codex-pulse-leaderboard";
 
 export class LeaderboardSyncService {
