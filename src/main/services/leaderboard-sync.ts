@@ -9,7 +9,13 @@ const LEADERBOARD_ORIGIN = "https://codex-leaderboard.danielbutler1.chatgpt.site
 const SECRET_ID = "codex-pulse-leaderboard";
 
 export class LeaderboardSyncService {
-  private status: LeaderboardSyncStatus = { state: "disabled", lastSyncAt: null, error: null };
+  private status: LeaderboardSyncStatus = {
+    state: "disabled",
+    lastSyncAt: null,
+    error: null,
+    allTimeRank: null,
+    todayRank: null,
+  };
   private inflight: Promise<LeaderboardSyncStatus> | null = null;
 
   constructor(
@@ -17,6 +23,7 @@ export class LeaderboardSyncService {
     private readonly db: UsageDatabase,
     private readonly getSettings: () => AppSettings,
     private readonly getLatestSnapshot: () => UsageSnapshot | null,
+    private readonly onStatusChange: (status: LeaderboardSyncStatus) => void = () => undefined,
   ) {}
 
   getStatus() { return { ...this.status }; }
@@ -25,13 +32,13 @@ export class LeaderboardSyncService {
     if (this.inflight) return this.inflight;
     const profile = this.getSettings().leaderboardProfile;
     if (!profile.sharingEnabled || !profile.displayName.trim()) {
-      this.status = { ...this.status, state: "disabled", error: null };
+      this.setStatus({ ...this.status, state: "disabled", error: null, allTimeRank: null, todayRank: null });
       return Promise.resolve(this.getStatus());
     }
     if (!force && this.status.lastSyncAt && Date.now() - this.status.lastSyncAt < 55 * 60 * 1000) {
       return Promise.resolve(this.getStatus());
     }
-    this.status = { ...this.status, state: "syncing", error: null };
+    this.setStatus({ ...this.status, state: "syncing", error: null });
     this.inflight = this.performSync().finally(() => { this.inflight = null; });
     return this.inflight;
   }
@@ -45,7 +52,7 @@ export class LeaderboardSyncService {
       }).catch(() => undefined);
       this.secrets.update(SECRET_ID, { bearerToken: "" });
     }
-    this.status = { state: "disabled", lastSyncAt: null, error: null };
+    this.setStatus({ state: "disabled", lastSyncAt: null, error: null, allTimeRank: null, todayRank: null });
     return this.getStatus();
   }
 
@@ -90,15 +97,31 @@ export class LeaderboardSyncService {
         }),
       });
       if (!response.ok) throw new Error(`Leaderboard upload failed (${response.status}).`);
-      this.status = { state: "synced", lastSyncAt: Date.now(), error: null };
+      const result = await response.json() as { allTimeRank?: unknown; todayRank?: unknown };
+      this.setStatus({
+        state: "synced",
+        lastSyncAt: Date.now(),
+        error: null,
+        allTimeRank: parseRank(result.allTimeRank),
+        todayRank: parseRank(result.todayRank),
+      });
     } catch (error) {
-      this.status = { ...this.status, state: "error", error: error instanceof Error ? error.message : "Leaderboard sync failed." };
+      this.setStatus({ ...this.status, state: "error", error: error instanceof Error ? error.message : "Leaderboard sync failed." });
     }
     return this.getStatus();
+  }
+
+  private setStatus(status: LeaderboardSyncStatus) {
+    this.status = status;
+    this.onStatusChange(this.getStatus());
   }
 }
 
 function hash(value: string) { return createHash("sha256").update(value).digest("hex"); }
 function localDateKey(value: Date) {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+function parseRank(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 }

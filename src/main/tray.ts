@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { app, Menu, Tray, nativeImage } from "electron";
-import type { UsageSnapshot } from "../../shared/types";
+import type { LeaderboardSyncStatus, UsageSnapshot } from "../../shared/types";
 
 type TrayCallbacks = {
   onOpen: () => void;
@@ -14,6 +14,13 @@ export class TrayController {
   private tray: Tray | null = null;
   private startAtLogin = false;
   private callbacks: TrayCallbacks | null = null;
+  private leaderboardStatus: LeaderboardSyncStatus = {
+    state: "disabled",
+    lastSyncAt: null,
+    error: null,
+    allTimeRank: null,
+    todayRank: null,
+  };
 
   create(startAtLogin: boolean, callbacks: TrayCallbacks) {
     this.startAtLogin = startAtLogin;
@@ -31,8 +38,11 @@ export class TrayController {
     this.rebuildMenu();
   }
 
-  update(snapshot: UsageSnapshot | null, startAtLogin: boolean) {
+  update(snapshot: UsageSnapshot | null, startAtLogin: boolean, leaderboardStatus?: LeaderboardSyncStatus) {
     this.startAtLogin = startAtLogin;
+    if (leaderboardStatus) {
+      this.leaderboardStatus = { ...leaderboardStatus };
+    }
     if (!this.tray) {
       return;
     }
@@ -60,6 +70,10 @@ export class TrayController {
       {
         label: "Refresh now",
         click: () => this.callbacks?.onRefreshNow(),
+      },
+      {
+        label: buildLeaderboardMenuLabel(this.leaderboardStatus),
+        enabled: false,
       },
       { type: "separator" },
       {
@@ -96,6 +110,19 @@ function buildMenuBarTitle(snapshot: UsageSnapshot | null): string {
     return "Pulse";
   }
   return `${Math.max(0, Math.min(100, 100 - snapshot.primaryUsedPercent)).toFixed(0)}%`;
+}
+
+function buildLeaderboardMenuLabel(status: LeaderboardSyncStatus): string {
+  if (status.state === "synced" && status.allTimeRank != null && status.todayRank != null) {
+    return `Leaderboard: #${status.allTimeRank} all-time · #${status.todayRank} today`;
+  }
+  if (status.state === "syncing") {
+    return "Leaderboard: Syncing…";
+  }
+  if (status.state === "error") {
+    return "Leaderboard: Sync failed";
+  }
+  return "Leaderboard: Not opted in";
 }
 
 function createTrayIcon() {

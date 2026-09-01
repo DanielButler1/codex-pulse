@@ -25,10 +25,26 @@ export async function PUT(request: Request) {
       cleanCounter(body.todayCostCents),
       typeof body.todayDate === "string" ? body.todayDate.slice(0, 10) : "",
       Date.now(),
-      hash,
-    ).run();
+    hash,
+  ).run();
   if (!result.meta.changes) return Response.json({ error: "Upload credential is not registered." }, { status: 401 });
-  return Response.json({ synced: true });
+
+  const current = await getLeaderboardDb().prepare(`SELECT all_time_tokens, today_tokens
+    FROM leaderboard_entries WHERE device_token_hash = ?`).bind(hash).first<{
+      all_time_tokens: number;
+      today_tokens: number;
+    }>();
+  if (!current) return Response.json({ error: "Upload credential is not registered." }, { status: 401 });
+
+  const [allTime, today] = await Promise.all([
+    getLeaderboardDb().prepare("SELECT COUNT(*) AS rank FROM leaderboard_entries WHERE all_time_tokens > ?").bind(current.all_time_tokens).first<{ rank: number }>(),
+    getLeaderboardDb().prepare("SELECT COUNT(*) AS rank FROM leaderboard_entries WHERE today_tokens > ?").bind(current.today_tokens).first<{ rank: number }>(),
+  ]);
+  return Response.json({
+    synced: true,
+    allTimeRank: Number(allTime?.rank ?? 0) + 1,
+    todayRank: Number(today?.rank ?? 0) + 1,
+  });
 }
 
 export async function DELETE(request: Request) {

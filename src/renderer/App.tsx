@@ -148,7 +148,13 @@ export default function App() {
   const [latest, setLatest] = useState<UsageSnapshot | null>(null);
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [leaderboardSyncStatus, setLeaderboardSyncStatus] = useState<LeaderboardSyncStatus>({ state: "disabled", lastSyncAt: null, error: null });
+  const [leaderboardSyncStatus, setLeaderboardSyncStatus] = useState<LeaderboardSyncStatus>({
+    state: "disabled",
+    lastSyncAt: null,
+    error: null,
+    allTimeRank: null,
+    todayRank: null,
+  });
   const [loading, setLoading] = useState(true);
   const [modelUsageLoading, setModelUsageLoading] = useState(false);
   const [updateState, setUpdateState] = useState<AppUpdateState | null>(null);
