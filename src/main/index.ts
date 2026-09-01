@@ -136,6 +136,9 @@ function showWindow() {
 
 async function bootstrap() {
   app.setAppUserModelId("com.codexpulse.desktop");
+  if (process.platform === "darwin") {
+    app.dock.hide();
+  }
 
   settingsStore = new SettingsStore(app.getPath("userData"));
   providerSecretsStore = new ProviderSecretsStore(app.getPath("userData"));
