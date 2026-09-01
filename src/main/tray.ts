@@ -24,6 +24,9 @@ export class TrayController {
 
     this.tray = new Tray(createTrayIcon());
     this.tray.setToolTip("Codex: waiting for data");
+    if (process.platform === "darwin") {
+      this.tray.setTitle("Pulse");
+    }
     this.tray.on("click", () => callbacks.onOpen());
     this.rebuildMenu();
   }
@@ -34,6 +37,9 @@ export class TrayController {
       return;
     }
     this.tray.setToolTip(buildTooltip(snapshot));
+    if (process.platform === "darwin") {
+      this.tray.setTitle(buildMenuBarTitle(snapshot));
+    }
     this.rebuildMenu();
   }
 
@@ -85,7 +91,21 @@ function buildTooltip(snapshot: UsageSnapshot | null): string {
   return `Codex left: ${primaryRemaining} primary, ${secondaryRemaining} weekly`;
 }
 
+function buildMenuBarTitle(snapshot: UsageSnapshot | null): string {
+  if (!snapshot || snapshot.primaryUsedPercent == null) {
+    return "Pulse";
+  }
+  return `${Math.max(0, Math.min(100, 100 - snapshot.primaryUsedPercent)).toFixed(0)}%`;
+}
+
 function createTrayIcon() {
+  if (process.platform === "darwin") {
+    const image = nativeImage.createFromDataURL(
+      `data:image/svg+xml;charset=utf-8,${encodeURIComponent(MAC_TRAY_ICON_SVG)}`,
+    );
+    image.setTemplateImage(true);
+    return image;
+  }
   const iconPath = resolveTrayIconPath();
   if (iconPath && fs.existsSync(iconPath)) {
     return nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
@@ -93,6 +113,11 @@ function createTrayIcon() {
   const fallback = nativeImage.createEmpty();
   return fallback.resize({ width: 16, height: 16 });
 }
+
+const MAC_TRAY_ICON_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
+  <path fill="#000" d="M1.5 9h3.1l1.5-4.4 2.3 8.8 1.7-5.1 1.2 2.2h5.2v-1.8h-4.1l-1.8-3.2-1.7 5.1-2.3-8.8L3.4 7.2H1.5z"/>
+</svg>`;
 
 function resolveTrayIconPath(): string | null {
   if (app.isPackaged) {
