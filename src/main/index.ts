@@ -157,6 +157,9 @@ async function bootstrap() {
     db,
     () => latestSettings ?? DEFAULT_SETTINGS,
     () => latestSnapshot,
+    (status) => {
+      trayController?.update(latestSnapshot, latestSettings?.startAtLogin ?? false, status);
+    },
   );
 
   const usageService = new CodexUsageService();
@@ -177,7 +180,7 @@ async function bootstrap() {
       const previousSnapshot = latestSnapshot;
       latestSnapshot = snapshot;
       latestStatus = status;
-      trayController?.update(snapshot, latestSettings?.startAtLogin ?? false);
+      trayController?.update(snapshot, latestSettings?.startAtLogin ?? false, leaderboardSyncService?.getStatus());
       maybeNotifyThreshold(snapshot, previousSnapshot);
       mainWindow?.webContents.send("codexPulse:updated");
     },
@@ -199,14 +202,14 @@ async function bootstrap() {
       latestSettings = settingsStore.update({ startAtLogin: enabled });
       scheduler.updateSettings(latestSettings);
       configureAutoLaunch(enabled);
-      trayController?.update(latestSnapshot, enabled);
+      trayController?.update(latestSnapshot, enabled, leaderboardSyncService?.getStatus());
     },
     onQuit: () => {
       isQuitting = true;
       app.quit();
     },
   });
-  trayController.update(latestSnapshot, latestSettings.startAtLogin);
+  trayController.update(latestSnapshot, latestSettings.startAtLogin, leaderboardSyncService.getStatus());
 
   createWindow();
   scheduler.start();
@@ -354,17 +357,17 @@ function registerIpc() {
   ipcMain.handle(
     "codexPulse:getLeaderboardSyncStatus",
     async (): Promise<LeaderboardSyncStatus> =>
-      leaderboardSyncService?.getStatus() ?? { state: "disabled", lastSyncAt: null, error: null },
+      leaderboardSyncService?.getStatus() ?? { state: "disabled", lastSyncAt: null, error: null, allTimeRank: null, todayRank: null },
   );
   ipcMain.handle(
     "codexPulse:syncLeaderboardNow",
     async (): Promise<LeaderboardSyncStatus> =>
-      leaderboardSyncService?.sync(true) ?? { state: "disabled", lastSyncAt: null, error: null },
+      leaderboardSyncService?.sync(true) ?? { state: "disabled", lastSyncAt: null, error: null, allTimeRank: null, todayRank: null },
   );
   ipcMain.handle(
     "codexPulse:deleteLeaderboardEntry",
     async (): Promise<LeaderboardSyncStatus> =>
-      leaderboardSyncService?.deleteEntry() ?? { state: "disabled", lastSyncAt: null, error: null },
+      leaderboardSyncService?.deleteEntry() ?? { state: "disabled", lastSyncAt: null, error: null, allTimeRank: null, todayRank: null },
   );
   ipcMain.handle(
     "codexPulse:updateSettings",
@@ -377,7 +380,7 @@ function registerIpc() {
       applyTheme(latestSettings.theme);
       configureAutoLaunch(latestSettings.startAtLogin);
       scheduler.updateSettings(latestSettings);
-      trayController?.update(latestSnapshot, latestSettings.startAtLogin);
+      trayController?.update(latestSnapshot, latestSettings.startAtLogin, leaderboardSyncService?.getStatus());
       if (wasSharing && !latestSettings.leaderboardProfile.sharingEnabled) {
         await leaderboardSyncService?.deleteEntry();
       } else if (!wasSharing && latestSettings.leaderboardProfile.sharingEnabled) {

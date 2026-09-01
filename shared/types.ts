@@ -93,6 +93,8 @@ export type LeaderboardSyncStatus = {
   state: "disabled" | "ready" | "syncing" | "synced" | "error";
   lastSyncAt: number | null;
   error: string | null;
+  allTimeRank: number | null;
+  todayRank: number | null;
 };
 
 export type AppSettings = {
