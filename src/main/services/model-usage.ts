@@ -11,6 +11,7 @@ import type {
   ModelUsageSummary,
   UsageSnapshot,
 } from "../../../shared/types";
+import { estimateModelCostUsd } from "../../../shared/model-pricing";
 
 type MutableModelUsageRow = ModelUsageRow;
 
@@ -47,12 +48,6 @@ type MonthProjection = {
   projectedCostUsd: number;
 };
 
-type ModelPricing = {
-  inputUsdPer1M: number;
-  cachedInputUsdPer1M: number;
-  outputUsdPer1M: number;
-};
-
 const DAY_MS = 24 * 60 * 60 * 1000;
 const YIELD_EVERY_LINES = 2_000;
 const RANGE_TO_MS = {
@@ -62,66 +57,6 @@ const RANGE_TO_MS = {
   "7d": 7 * DAY_MS,
   "30d": 30 * DAY_MS,
 } as const;
-
-const FALLBACK_MODEL_PRICING: ModelPricing = {
-  inputUsdPer1M: 2.5,
-  cachedInputUsdPer1M: 0.25,
-  outputUsdPer1M: 15,
-};
-
-// Rough defaults aligned to current OpenAI API pricing bands as of 2026-07-10.
-// Sources:
-// - https://developers.openai.com/api/docs/pricing
-// - https://openai.com/index/gpt-5-6/
-// - https://developers.openai.com/api/docs/models/gpt-5.2-codex
-// - https://developers.openai.com/api/docs/models/gpt-5.3-codex
-const MODEL_PRICING: Array<{ prefix: string; pricing: ModelPricing }> = [
-  {
-    prefix: "gpt-5.6-luna",
-    pricing: { inputUsdPer1M: 1, cachedInputUsdPer1M: 0.1, outputUsdPer1M: 6 },
-  },
-  {
-    prefix: "gpt-5.6-terra",
-    pricing: { inputUsdPer1M: 2.5, cachedInputUsdPer1M: 0.25, outputUsdPer1M: 15 },
-  },
-  {
-    prefix: "gpt-5.6-sol",
-    pricing: { inputUsdPer1M: 5, cachedInputUsdPer1M: 0.5, outputUsdPer1M: 30 },
-  },
-  {
-    // Treat an unqualified GPT-5.6 model ID as the flagship Sol tier.
-    prefix: "gpt-5.6",
-    pricing: { inputUsdPer1M: 5, cachedInputUsdPer1M: 0.5, outputUsdPer1M: 30 },
-  },
-  {
-    prefix: "gpt-5.5",
-    pricing: { inputUsdPer1M: 5, cachedInputUsdPer1M: 0.5, outputUsdPer1M: 30 },
-  },
-  {
-    prefix: "gpt-5.4-mini",
-    pricing: { inputUsdPer1M: 0.75, cachedInputUsdPer1M: 0.075, outputUsdPer1M: 4.5 },
-  },
-  {
-    prefix: "gpt-5.4",
-    pricing: { inputUsdPer1M: 2.5, cachedInputUsdPer1M: 0.25, outputUsdPer1M: 15 },
-  },
-  {
-    prefix: "gpt-5.3-codex-spark",
-    pricing: { inputUsdPer1M: 0.75, cachedInputUsdPer1M: 0.075, outputUsdPer1M: 4.5 },
-  },
-  {
-    prefix: "gpt-5.3-codex",
-    pricing: { inputUsdPer1M: 1.75, cachedInputUsdPer1M: 0.175, outputUsdPer1M: 14 },
-  },
-  {
-    prefix: "gpt-5.2-codex",
-    pricing: { inputUsdPer1M: 1.75, cachedInputUsdPer1M: 0.175, outputUsdPer1M: 14 },
-  },
-  {
-    prefix: "gpt-5.2",
-    pricing: { inputUsdPer1M: 1.75, cachedInputUsdPer1M: 0.175, outputUsdPer1M: 14 },
-  },
-];
 
 export async function getModelUsageSummary(
   db: UsageDatabase,
@@ -837,18 +772,7 @@ function normalizeModelName(value: unknown): string {
 }
 
 export function estimateCostUsd(model: string, usage: TokenTotals): number {
-  const pricing = resolveModelPricing(model);
-  // Cached input tokens are a discounted subset of input tokens, not an extra bucket.
-  const cachedInputTokens = Math.min(usage.cachedInputTokens, usage.inputTokens);
-  const uncachedInputTokens = Math.max(0, usage.inputTokens - cachedInputTokens);
-  const inputCost = (uncachedInputTokens / 1_000_000) * pricing.inputUsdPer1M;
-  const cachedInputCost = (cachedInputTokens / 1_000_000) * pricing.cachedInputUsdPer1M;
-  const outputCost = (usage.outputTokens / 1_000_000) * pricing.outputUsdPer1M;
-  const estimated = inputCost + cachedInputCost + outputCost;
-  if (!Number.isFinite(estimated) || estimated <= 0) {
-    return 0;
-  }
-  return estimated;
+  return estimateModelCostUsd(model, usage);
 }
 
 function percentageOf(value: number, total: number): number {
@@ -892,16 +816,6 @@ function calculateObservedLimitConsumption(
   }
 
   return hasObservation ? totalUsedPercent : null;
-}
-
-function resolveModelPricing(model: string): ModelPricing {
-  const normalized = model.toLowerCase();
-  for (const candidate of MODEL_PRICING) {
-    if (normalized.startsWith(candidate.prefix)) {
-      return candidate.pricing;
-    }
-  }
-  return FALLBACK_MODEL_PRICING;
 }
 
 function extractTokenTotals(value: unknown): TokenTotals | null {

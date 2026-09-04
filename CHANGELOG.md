@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added GPT-6 Astra API cost estimates and refreshed GPT-5.6 Sol, Terra, and Luna pricing.
+
 ## 0.0.23-beta
 
 - Stopped attributing replayed rollout token counts that precede the first turn context to the unknown model.
