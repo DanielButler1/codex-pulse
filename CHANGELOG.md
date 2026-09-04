@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.30-beta
 
 - Added GPT-6 Astra API cost estimates and refreshed GPT-5.6 Sol, Terra, and Luna pricing.
 
