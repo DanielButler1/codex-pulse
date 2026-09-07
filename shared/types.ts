@@ -97,6 +97,15 @@ export type LeaderboardSyncStatus = {
   todayRank: number | null;
 };
 
+export type UsageSchedulePeriod = {
+  id: string;
+  name: string;
+  days: number[];
+  startTime: string;
+  endTime: string;
+  usagePercent: number;
+};
+
 export type AppSettings = {
   pollIntervalSeconds: number;
   startAtLogin: boolean;
@@ -107,6 +116,7 @@ export type AppSettings = {
   subscriptionLastRenewalDate: string;
   projectionResetSource: "default" | "manual" | "custom";
   projectionResetAt: number | null;
+  usageSchedule: UsageSchedulePeriod[];
   leaderboardProfile: LeaderboardProfileSettings;
   providerSettings: Record<string, ProviderConnectionSettings>;
 };

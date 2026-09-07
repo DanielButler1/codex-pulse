@@ -2,10 +2,12 @@ import { useState, type ChangeEvent, type ReactNode } from "react";
 import {
   CalendarDays,
   Camera,
+  Clock3,
   CreditCard,
   Globe2,
   Monitor,
   MoonStar,
+  Plus,
   ShieldCheck,
   SunMedium,
   Trash2,
@@ -26,6 +28,28 @@ export function SettingsPanel({ settings, onChange, leaderboardSyncStatus, onSyn
   const [profileImageError, setProfileImageError] = useState<string | null>(null);
   const leaderboardProfile = settings.leaderboardProfile;
   const profileInitials = getInitials(leaderboardProfile.displayName);
+  const usageSchedule = settings.usageSchedule;
+
+  const updateUsagePeriod = (
+    id: string,
+    partial: Partial<AppSettings["usageSchedule"][number]>,
+  ) => onChange({
+    usageSchedule: usageSchedule.map((period) => period.id === id ? { ...period, ...partial } : period),
+  });
+
+  const addUsagePeriod = () => onChange({
+    usageSchedule: [
+      ...usageSchedule,
+      {
+        id: `usage-period-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        name: "",
+        days: [0, 1, 2, 3, 4, 5, 6],
+        startTime: "00:00",
+        endTime: "07:00",
+        usagePercent: 0,
+      },
+    ],
+  });
 
   const updateLeaderboardProfile = (
     partial: Partial<AppSettings["leaderboardProfile"]>,
@@ -226,6 +250,130 @@ export function SettingsPanel({ settings, onChange, leaderboardSyncStatus, onSyn
       </div>
 
       <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-2 text-amber-300">
+              <Clock3 className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-neutral-100">Usage schedule</h3>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-neutral-400">
+                Shape targets and forecasts around recurring times when your expected Codex use is lower.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-semibold text-neutral-950 transition hover:bg-amber-300"
+            onClick={addUsagePeriod}
+          >
+            <Plus className="h-4 w-4" /> Add period
+          </button>
+        </div>
+
+        {usageSchedule.length === 0 ? (
+          <button
+            type="button"
+            className="mt-6 w-full rounded-2xl border border-dashed border-neutral-700 bg-neutral-950 px-6 py-8 text-center transition hover:border-amber-500/50"
+            onClick={addUsagePeriod}
+          >
+            <span className="block text-sm font-medium text-neutral-200">Your target currently treats every hour equally</span>
+            <span className="mt-1 block text-sm text-neutral-500">Add sleep, work, travel, or any other recurring low-use time.</span>
+          </button>
+        ) : (
+          <div className="mt-6 space-y-4">
+            {usageSchedule.map((period) => (
+              <div key={period.id} className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                <div className="flex items-start gap-3">
+                  <input
+                    type="text"
+                    aria-label="Period name"
+                    placeholder={period.usagePercent === 0 ? "Sleep" : "At work"}
+                    maxLength={40}
+                    className="min-w-0 flex-1 border-0 bg-transparent text-base font-semibold text-neutral-100 outline-none placeholder:text-neutral-600"
+                    value={period.name}
+                    onChange={(event) => updateUsagePeriod(period.id, { name: event.target.value })}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Remove period"
+                    className="rounded-lg p-2 text-neutral-500 transition hover:bg-red-500/10 hover:text-red-300"
+                    onClick={() => onChange({ usageSchedule: usageSchedule.filter((item) => item.id !== period.id) })}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-1.5" aria-label="Days of week">
+                  {DAY_LABELS.map((label, day) => {
+                    const selected = period.days.includes(day);
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        aria-pressed={selected}
+                        className={`h-9 min-w-10 rounded-lg px-2 text-xs font-semibold transition ${selected ? "bg-amber-400 text-neutral-950" : "border border-neutral-800 text-neutral-500 hover:border-neutral-600 hover:text-neutral-300"}`}
+                        onClick={() => updateUsagePeriod(period.id, {
+                          days: selected && period.days.length > 1
+                            ? period.days.filter((item) => item !== day)
+                            : selected
+                              ? period.days
+                              : [...period.days, day].sort(),
+                        })}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_1.4fr]">
+                  <TimeField label="From" value={period.startTime} onChange={(startTime) => updateUsagePeriod(period.id, { startTime })} />
+                  <TimeField label="Until" value={period.endTime} onChange={(endTime) => updateUsagePeriod(period.id, { endTime })} />
+                  <label className="flex flex-col gap-2 text-sm">
+                    <span className="font-medium text-neutral-300">Expected usage</span>
+                    <select
+                      className="rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2.5 text-neutral-100 outline-none ring-amber-400 transition focus:ring-2"
+                      value={period.usagePercent === 0 ? "none" : "reduced"}
+                      onChange={(event) => updateUsagePeriod(period.id, { usagePercent: event.target.value === "none" ? 0 : 25 })}
+                    >
+                      <option value="none">No usage</option>
+                      <option value="reduced">Reduced usage</option>
+                    </select>
+                  </label>
+                </div>
+
+                {period.usagePercent > 0 ? (
+                  <label className="mt-4 block rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3">
+                    <span className="flex items-center justify-between gap-3 text-sm">
+                      <span className="font-medium text-neutral-300">Share of normal pace</span>
+                      <span className="font-semibold tabular-nums text-amber-300">{period.usagePercent}%</span>
+                    </span>
+                    <input
+                      type="range"
+                      min="1"
+                      max="99"
+                      step="1"
+                      className="mt-3 w-full accent-amber-400"
+                      value={period.usagePercent}
+                      onChange={(event) => updateUsagePeriod(period.id, { usagePercent: Number(event.target.value) })}
+                    />
+                    <span className="mt-2 block text-xs leading-5 text-neutral-500">
+                      Use 3% for occasional phone access; 25% for a lighter workday. This scales your normal hourly pace.
+                    </span>
+                  </label>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <p className="mt-4 text-xs leading-5 text-neutral-500">
+          Times use your computer’s local timezone. Overnight periods end the following day; overlapping periods use the lower expected usage.
+        </p>
+      </section>
+
+      <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-3">
             <div className="rounded-xl border border-violet-500/20 bg-violet-500/10 p-2 text-violet-300">
@@ -346,6 +494,22 @@ export function SettingsPanel({ settings, onChange, leaderboardSyncStatus, onSyn
         </div>
       </section>
     </section>
+  );
+}
+
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function TimeField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="flex flex-col gap-2 text-sm">
+      <span className="font-medium text-neutral-300">{label}</span>
+      <input
+        type="time"
+        className="rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2.5 text-neutral-100 outline-none ring-amber-400 transition focus:ring-2"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
   );
 }
 
