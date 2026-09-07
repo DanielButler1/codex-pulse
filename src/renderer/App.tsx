@@ -31,7 +31,7 @@ import {
   PROVIDER_IDS,
     type ProviderId,
 } from "../../shared/provider-catalog";
-import { findNextAvailableManualResetAt } from "../../shared/projection-reset";
+import { findNextAvailableManualResetAt, getProjectionUsageSchedule } from "../../shared/projection-reset";
 import { calculateScheduledUsage, calculateUsageOpportunity, findScheduledLimitHit } from "../../shared/usage-schedule";
 import type {
   AppSettings,
@@ -590,9 +590,9 @@ export default function App() {
             ? weeklyResetAt - (latest?.secondaryWindowMinutes ?? 7 * 24 * 60) * 60 * 1000
             : null,
         burnRatePercentPerHour: effectiveBurnRate,
-        usageSchedule: settings.usageSchedule,
+        usageSchedule: getProjectionUsageSchedule(settings, Date.now()),
       }),
-    [effectiveBurnRate, history, latest, projectionResetAt, settings.usageSchedule, weeklyResetAt],
+    [effectiveBurnRate, history, latest, projectionResetAt, settings, weeklyResetAt],
   );
 
   const estimatedTimeText =
@@ -610,7 +610,7 @@ export default function App() {
   const evenPaceGapText = formatEvenPaceGap(predictionTimeline.evenPaceGap);
   const remainingOpportunityDays =
     projectionResetAt != null && latest != null
-      ? calculateUsageOpportunity(latest.checkedAt, projectionResetAt, settings.usageSchedule) / (24 * 60 * 60 * 1000)
+      ? calculateUsageOpportunity(latest.checkedAt, projectionResetAt, getProjectionUsageSchedule(settings, Date.now())) / (24 * 60 * 60 * 1000)
       : null;
   const suggestedDailyPace =
     secondaryRemaining != null && remainingOpportunityDays != null && remainingOpportunityDays > 0
