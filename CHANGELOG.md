@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.31-beta
+
+- Added recurring no-usage and reduced-usage schedules for sleep, work, travel, and other low-use periods.
+- Adjusted weekly targets, suggested pace, trajectory, and limit-hit forecasts around scheduled availability.
+- Added support for overnight and overlapping periods in the computer's local timezone.
+
 ## 0.0.30-beta
 
 - Added GPT-6 Astra API cost estimates and refreshed GPT-5.6 Sol, Terra, and Luna pricing.
