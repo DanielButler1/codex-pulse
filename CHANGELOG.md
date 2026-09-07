@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.32-beta
+
+- Animated usage-limit percentages in the header cards and main remaining-capacity panel with NumberFlow.
+- Preserved whole-number rounding and respected reduced-motion preferences.
+
 ## 0.0.31-beta
 
 - Added recurring no-usage and reduced-usage schedules for sleep, work, travel, and other low-use periods.

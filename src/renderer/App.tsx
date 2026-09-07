@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import NumberFlow from "@number-flow/react";
 import {
   Area,
   AreaChart,
@@ -862,7 +863,13 @@ export default function App() {
                       <div>
                         <div className="flex items-end gap-2">
                           <p className="text-5xl font-semibold leading-none tracking-tight text-neutral-50">
-                            {secondaryRemaining == null ? "--" : Math.round(secondaryRemaining)}
+                            {secondaryRemaining == null ? "--" : (
+                              <NumberFlow
+                                value={Math.round(secondaryRemaining)}
+                                format={{ maximumFractionDigits: 0, useGrouping: false }}
+                                className="tabular-nums"
+                              />
+                            )}
                           </p>
                           <p className="mb-1 text-lg font-medium text-neutral-400">% remaining</p>
                         </div>
@@ -1132,7 +1139,12 @@ function LimitCard({
       </div>
       {displayPercent != null ? (
         <p className="mt-2 text-4xl font-semibold leading-none">
-          {displayPercent.toFixed(0)}%
+          <NumberFlow
+            value={Number(displayPercent.toFixed(0))}
+            format={{ maximumFractionDigits: 0, useGrouping: false }}
+            suffix="%"
+            className="tabular-nums"
+          />
           <span className="ml-2 text-2xl font-normal text-neutral-300">{displayLabel}</span>
         </p>
       ) : (
