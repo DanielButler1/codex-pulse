@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { PROVIDER_IDS } from "../../shared/provider-catalog";
-import type { AppSettings, ProviderCollectorMode, ProviderConnectionSettings } from "../../shared/types";
+import type { AppSettings, ProviderCollectorMode, ProviderConnectionSettings, UsageSchedulePeriod } from "../../shared/types";
 
 const DEFAULT_PROVIDER_CONNECTION: ProviderConnectionSettings = {
   enabled: true,
@@ -32,6 +32,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   subscriptionLastRenewalDate: "",
   projectionResetSource: "default",
   projectionResetAt: null,
+  usageSchedule: [],
   leaderboardProfile: {
     displayName: "",
     avatarDataUrl: "",
@@ -115,6 +116,7 @@ function sanitizeSettings(input: SettingsFile): AppSettings {
     subscriptionPlan: sanitizeSubscriptionPlan(input.subscriptionPlan),
     subscriptionLastRenewalDate: sanitizeRenewalDate(input.subscriptionLastRenewalDate),
     ...sanitizeProjectionReset(input.projectionResetSource, input.projectionResetAt),
+    usageSchedule: sanitizeUsageSchedule(input.usageSchedule),
     leaderboardProfile: sanitizeLeaderboardProfile(input.leaderboardProfile),
     providerSettings,
   };
@@ -133,6 +135,33 @@ function sanitizeProjectionReset(
     return { projectionResetSource: source, projectionResetAt: resetAt };
   }
   return { projectionResetSource: "default", projectionResetAt: null };
+}
+
+function sanitizeUsageSchedule(value: UsageSchedulePeriod[] | undefined): UsageSchedulePeriod[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((period, index) => {
+    if (!period || typeof period !== "object") return [];
+    const startTime = sanitizeTime(period.startTime);
+    const endTime = sanitizeTime(period.endTime);
+    const days = Array.isArray(period.days)
+      ? [...new Set(period.days.filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))]
+      : [];
+    if (!startTime || !endTime || startTime === endTime || days.length === 0) return [];
+    return [{
+      id: typeof period.id === "string" && period.id.trim() ? period.id.trim().slice(0, 80) : `period-${index}`,
+      name: typeof period.name === "string" ? period.name.trim().slice(0, 40) : "",
+      days,
+      startTime,
+      endTime,
+      usagePercent: Number.isFinite(period.usagePercent)
+        ? Math.round(Math.max(0, Math.min(100, period.usagePercent)))
+        : 0,
+    }];
+  });
+}
+
+function sanitizeTime(value: string): string | null {
+  return typeof value === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : null;
 }
 
 function sanitizeLeaderboardProfile(
@@ -212,6 +241,7 @@ function sanitizeString(value: string | undefined): string {
 function cloneSettings(settings: AppSettings): AppSettings {
   return {
     ...settings,
+    usageSchedule: settings.usageSchedule.map((period) => ({ ...period, days: [...period.days] })),
     leaderboardProfile: { ...settings.leaderboardProfile },
     providerSettings: Object.fromEntries(
       Object.entries(settings.providerSettings).map(([providerId, providerSettings]) => [

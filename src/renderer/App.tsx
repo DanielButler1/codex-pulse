@@ -31,6 +31,7 @@ import {
     type ProviderId,
 } from "../../shared/provider-catalog";
 import { findNextAvailableManualResetAt } from "../../shared/projection-reset";
+import { calculateScheduledUsage, calculateUsageOpportunity, findScheduledLimitHit } from "../../shared/usage-schedule";
 import type {
   AppSettings,
   AppStatus,
@@ -55,6 +56,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   subscriptionLastRenewalDate: "",
   projectionResetSource: "default",
   projectionResetAt: null,
+  usageSchedule: [],
   leaderboardProfile: {
     displayName: "",
     avatarDataUrl: "",
@@ -587,8 +589,9 @@ export default function App() {
             ? weeklyResetAt - (latest?.secondaryWindowMinutes ?? 7 * 24 * 60) * 60 * 1000
             : null,
         burnRatePercentPerHour: effectiveBurnRate,
+        usageSchedule: settings.usageSchedule,
       }),
-    [effectiveBurnRate, history, latest, projectionResetAt, weeklyResetAt],
+    [effectiveBurnRate, history, latest, projectionResetAt, settings.usageSchedule, weeklyResetAt],
   );
 
   const estimatedTimeText =
@@ -604,13 +607,13 @@ export default function App() {
         ? "Before weekly reset"
         : "";
   const evenPaceGapText = formatEvenPaceGap(predictionTimeline.evenPaceGap);
-  const remainingDays =
+  const remainingOpportunityDays =
     projectionResetAt != null && latest != null
-      ? Math.max(0, (projectionResetAt - latest.checkedAt) / (24 * 60 * 60 * 1000))
+      ? calculateUsageOpportunity(latest.checkedAt, projectionResetAt, settings.usageSchedule) / (24 * 60 * 60 * 1000)
       : null;
   const suggestedDailyPace =
-    secondaryRemaining != null && remainingDays != null && remainingDays > 0
-      ? secondaryRemaining / remainingDays
+    secondaryRemaining != null && remainingOpportunityDays != null && remainingOpportunityDays > 0
+      ? secondaryRemaining / remainingOpportunityDays
       : null;
   const targetRemainingNow =
     predictionTimeline.evenPaceUsedNow == null ? null : 100 - predictionTimeline.evenPaceUsedNow;
@@ -1610,8 +1613,9 @@ function buildPredictionTimeline(params: {
   weeklyResetAt: number | null;
   periodStartAt?: number | null;
   burnRatePercentPerHour: number | null;
+  usageSchedule: AppSettings["usageSchedule"];
 }): PredictionTimeline {
-  const { history, latest, weeklyResetAt, periodStartAt, burnRatePercentPerHour } = params;
+  const { history, latest, weeklyResetAt, periodStartAt, burnRatePercentPerHour, usageSchedule } = params;
   if (!latest || weeklyResetAt == null || latest.secondaryUsedPercent == null) {
     return {
       periodStart: null,
@@ -1629,7 +1633,7 @@ function buildPredictionTimeline(params: {
   const usedNow = clampPct(latest.secondaryUsedPercent);
   const periodMinutes = latest.secondaryWindowMinutes ?? 7 * 24 * 60;
   const periodStart = periodStartAt ?? weeklyResetAt - periodMinutes * 60 * 1000;
-  const evenPaceUsedNow = calculateEvenPaceUsed(latest.checkedAt, periodStart, weeklyResetAt);
+  const evenPaceUsedNow = calculateEvenPaceUsed(latest.checkedAt, periodStart, weeklyResetAt, usageSchedule);
   const evenPaceGap = usedNow - evenPaceUsedNow;
 
   const observed = history
@@ -1678,7 +1682,9 @@ function buildPredictionTimeline(params: {
   addPoint(latest.checkedAt, null, usedNow);
   let hitAt: number | null = null;
   let hitState: PredictionTimeline["hitState"] = "insufficient_data";
-  const projectedHitAt = estimateHitAt(latest.checkedAt, usedNow, projectedRate);
+  const projectedHitAt = projectedRate == null
+    ? null
+    : findScheduledLimitHit(latest.checkedAt, weeklyResetAt, 100 - usedNow, projectedRate, usageSchedule);
   if (
     projectedHitAt != null &&
     projectedHitAt > latest.checkedAt &&
@@ -1686,30 +1692,26 @@ function buildPredictionTimeline(params: {
   ) {
     hitAt = projectedHitAt;
     hitState = "hit";
-    addProjectedCurve({
+    addScheduledProjectedCurve({
       addPoint,
       startAt: latest.checkedAt,
       endAt: hitAt,
       startUsed: usedNow,
-      endUsed: 100,
-      easing: "linear",
+      ratePercentPerHour: projectedRate ?? 0,
+      usageSchedule,
     });
     addPoint(weeklyResetAt, null, null);
   } else {
     if (projectedRate != null && projectedRate > 0) {
       hitState = "no_hit_before_reset";
     }
-    const projectedAtReset =
-      projectedRate != null && projectedRate > 0
-        ? clampPct(usedNow + projectedRate * ((weeklyResetAt - latest.checkedAt) / (1000 * 60 * 60)))
-        : usedNow;
-    addProjectedCurve({
+    addScheduledProjectedCurve({
       addPoint,
       startAt: latest.checkedAt,
       endAt: weeklyResetAt,
       startUsed: usedNow,
-      endUsed: projectedAtReset,
-      easing: "linear",
+      ratePercentPerHour: projectedRate ?? 0,
+      usageSchedule,
     });
   }
 
@@ -1726,7 +1728,7 @@ function buildPredictionTimeline(params: {
       .sort((a, b) => a.checkedAt - b.checkedAt)
       .map((point) => ({
         ...point,
-        usedEvenPace: calculateEvenPaceUsed(point.checkedAt, periodStart, weeklyResetAt),
+        usedEvenPace: calculateEvenPaceUsed(point.checkedAt, periodStart, weeklyResetAt, usageSchedule),
       })),
   };
 }
@@ -1960,22 +1962,6 @@ function weightedAverageRate(
   return denominator > 0 ? numerator / denominator : null;
 }
 
-function estimateHitAt(
-  startAt: number,
-  usedNow: number,
-  ratePercentPerHour: number | null,
-): number | null {
-  if (ratePercentPerHour == null || ratePercentPerHour <= 0) {
-    return null;
-  }
-  const remaining = 100 - usedNow;
-  if (remaining <= 0) {
-    return startAt;
-  }
-  const hours = remaining / ratePercentPerHour;
-  return startAt + hours * 60 * 60 * 1000;
-}
-
 function buildWeeklyWindowOptions(
   latest: UsageSnapshot | null,
   history: UsageSnapshot[],
@@ -2031,36 +2017,39 @@ function calculateEvenPaceUsed(
   checkedAt: number,
   periodStart: number,
   resetAt: number,
+  usageSchedule: AppSettings["usageSchedule"],
 ): number {
   if (resetAt <= periodStart) {
     return 0;
   }
-  const elapsedRatio = (checkedAt - periodStart) / (resetAt - periodStart);
+  const totalOpportunity = calculateUsageOpportunity(periodStart, resetAt, usageSchedule);
+  if (totalOpportunity <= 0) return 0;
+  const elapsedRatio = calculateUsageOpportunity(periodStart, checkedAt, usageSchedule) / totalOpportunity;
   return clampPct(elapsedRatio * 100);
 }
 
-function addProjectedCurve(params: {
+function addScheduledProjectedCurve(params: {
   addPoint: (checkedAt: number, usedActual: number | null, usedProjected: number | null) => void;
   startAt: number;
   endAt: number;
   startUsed: number;
-  endUsed: number;
-  easing: "linear" | "easeIn";
+  ratePercentPerHour: number;
+  usageSchedule: AppSettings["usageSchedule"];
 }) {
-  const { addPoint, startAt, endAt, startUsed, endUsed, easing } = params;
-  if (endAt <= startAt) {
-    addPoint(startAt, null, clampPct(startUsed));
-    return;
-  }
-
+  const { addPoint, startAt, endAt, startUsed, ratePercentPerHour, usageSchedule } = params;
   const hourMs = 60 * 60 * 1000;
   for (let checkedAt = startAt; checkedAt < endAt; checkedAt += hourMs) {
-    const t = (checkedAt - startAt) / (endAt - startAt);
-    const eased = easing === "easeIn" ? t * t : t;
-    const usedProjected = clampPct(startUsed + (endUsed - startUsed) * eased);
-    addPoint(checkedAt, null, usedProjected);
+    addPoint(
+      checkedAt,
+      null,
+      clampPct(startUsed + calculateScheduledUsage(startAt, checkedAt, ratePercentPerHour, usageSchedule)),
+    );
   }
-  addPoint(endAt, null, clampPct(endUsed));
+  addPoint(
+    endAt,
+    null,
+    clampPct(startUsed + calculateScheduledUsage(startAt, endAt, ratePercentPerHour, usageSchedule)),
+  );
 }
 
 function formatLeadTime(
