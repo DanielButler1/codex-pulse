@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { findNextAvailableManualResetAt } from "./projection-reset.ts";
+import { findNextAvailableManualResetAt, getProjectionUsageSchedule } from "./projection-reset.ts";
+import { calculateUsageOpportunity, findScheduledLimitHit } from "./usage-schedule.ts";
 import type { CodexResetCreditsResult } from "./types.ts";
 
 const NOW = 1_800_000_000_000;
@@ -60,4 +61,25 @@ test("ignores expired, unavailable, and undated reset credits", () => {
 
 test("returns null when reset credits have not loaded", () => {
   assert.equal(findNextAvailableManualResetAt(null, NOW), null);
+});
+
+test("custom reset ignores downtime for projection and pace without changing saved schedules", () => {
+  const start = new Date(2026, 8, 8, 0).getTime();
+  const end = new Date(2026, 8, 8, 6).getTime();
+  const usageSchedule = [{ id: "sleep", name: "Sleep", days: [0, 1, 2, 3, 4, 5, 6], startTime: "00:00", endTime: "07:00", usagePercent: 0 }];
+  const customSchedule = getProjectionUsageSchedule({ projectionResetSource: "custom", projectionResetAt: end, usageSchedule }, start);
+  assert.equal(calculateUsageOpportunity(start, end, customSchedule), end - start);
+  const hit = findScheduledLimitHit(start, end, 2, 1, customSchedule);
+  assert.ok(hit != null && Math.abs(hit - (start + 2 * 60 * 60 * 1000)) <= 60_000);
+
+  for (const source of ["default", "manual"] as const) {
+    const schedule = getProjectionUsageSchedule({ projectionResetSource: source, projectionResetAt: end, usageSchedule }, start);
+    assert.equal(schedule, usageSchedule);
+    assert.equal(calculateUsageOpportunity(start, end, schedule), 0);
+    assert.equal(findScheduledLimitHit(start, end, 2, 1, schedule), null);
+  }
+  for (const resetAt of [null, start - 1, start]) {
+    assert.equal(getProjectionUsageSchedule({ projectionResetSource: "custom", projectionResetAt: resetAt, usageSchedule }, start), usageSchedule);
+  }
+  assert.equal(usageSchedule[0].usagePercent, 0);
 });

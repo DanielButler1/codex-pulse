@@ -1,4 +1,15 @@
-import type { CodexResetCreditsResult } from "./types";
+import type { AppSettings, CodexResetCreditsResult } from "./types";
+
+export function getProjectionUsageSchedule(
+  settings: Pick<AppSettings, "projectionResetSource" | "projectionResetAt" | "usageSchedule">,
+  now: number,
+): AppSettings["usageSchedule"] {
+  return settings.projectionResetSource === "custom" &&
+    settings.projectionResetAt != null &&
+    settings.projectionResetAt > now
+    ? []
+    : settings.usageSchedule;
+}
 
 export function findNextAvailableManualResetAt(
   resetCredits: CodexResetCreditsResult | null,

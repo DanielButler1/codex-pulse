@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.35-beta
+
+- Ignored scheduled downtime and reduced usage when projecting toward a custom reset time, including pace guidance and limit-hit forecasts.
+- Kept saved schedules active for weekly and manual-credit resets and restored them when a custom reset expires.
+
 ## 0.0.34-beta
 
 - Removed extra vertical padding around animated usage percentages to restore compact cards and number rows.
