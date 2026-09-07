@@ -10,6 +10,11 @@
     sans-serif;
 }
 
+.usage-percentage {
+  --number-flow-mask-height: 0px;
+  vertical-align: top;
+}
+
 html,
 body,
 #root {
