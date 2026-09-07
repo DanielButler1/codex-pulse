@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.34-beta
+
+- Removed extra vertical padding around animated usage percentages to restore compact cards and number rows.
+
 ## 0.0.33-beta
 
 - Fixed overlapping usage percentages by updating Electron to support NumberFlow's CSS layout and animation functions.

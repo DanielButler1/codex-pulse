@@ -867,7 +867,7 @@ export default function App() {
                               <NumberFlow
                                 value={Math.round(secondaryRemaining)}
                                 format={{ maximumFractionDigits: 0, useGrouping: false }}
-                                className="tabular-nums"
+                                className="usage-percentage tabular-nums"
                               />
                             )}
                           </p>
@@ -1143,7 +1143,7 @@ function LimitCard({
             value={Number(displayPercent.toFixed(0))}
             format={{ maximumFractionDigits: 0, useGrouping: false }}
             suffix="%"
-            className="tabular-nums"
+            className="usage-percentage tabular-nums"
           />
           <span className="ml-2 text-2xl font-normal text-neutral-300">{displayLabel}</span>
         </p>
