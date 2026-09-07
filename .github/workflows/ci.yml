@@ -28,5 +28,8 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Check renderer runtime
+        run: npm run test:renderer
+
       - name: Build
         run: npm run build
