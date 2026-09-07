@@ -1,7 +1,7 @@
 {
   "name": "codex-pulse",
   "private": true,
-  "version": "0.0.31-beta",
+  "version": "0.0.32-beta",
   "description": "Lightweight local Codex usage monitor for Windows.",
   "author": "Codex Pulse",
   "license": "MIT",
@@ -21,6 +21,7 @@
     "probe:app-server": "node scripts/probe-app-server.mjs"
   },
   "dependencies": {
+    "@number-flow/react": "^0.6.2",
     "better-sqlite3": "^12.9.0",
     "electron-updater": "^6.8.3",
     "lucide-react": "^1.14.0",
