@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.36-beta
+
+- Kept the pace target and projected trajectory independent when the trajectory reaches zero before reset.
+- Preserved configured reduced-usage and no-usage target periods across the full reset window.
+
 ## 0.0.35-beta
 
 - Ignored scheduled downtime and reduced usage when projecting toward a custom reset time, including pace guidance and limit-hit forecasts.
