@@ -92,7 +92,11 @@ type PredictionTimelinePoint = {
   checkedAt: number;
   usedActual: number | null;
   usedProjected: number | null;
-  usedEvenPace: number | null;
+};
+
+type TargetTimelinePoint = {
+  checkedAt: number;
+  usedEvenPace: number;
 };
 
 type PredictionTimeline = {
@@ -105,6 +109,7 @@ type PredictionTimeline = {
   evenPaceGap: number | null;
   projectedRate: number | null;
   points: PredictionTimelinePoint[];
+  targetPoints: TargetTimelinePoint[];
 };
 
 type PaceChartPoint = PredictionTimelinePoint & {
@@ -643,7 +648,6 @@ export default function App() {
         checkedAt,
         usedActual: null,
         usedProjected: null,
-        usedEvenPace: null,
         actualRemaining: null,
         currentRemaining: null,
         targetRemaining: null,
@@ -656,7 +660,12 @@ export default function App() {
         ...point,
         actualRemaining: point.usedActual == null ? null : 100 - point.usedActual,
         currentRemaining: point.usedProjected == null ? null : 100 - point.usedProjected,
-        targetRemaining: point.usedEvenPace == null ? null : 100 - point.usedEvenPace,
+      });
+    }
+
+    for (const point of predictionTimeline.targetPoints) {
+      addRow(point.checkedAt, {
+        targetRemaining: 100 - point.usedEvenPace,
       });
     }
 
@@ -1000,7 +1009,7 @@ export default function App() {
                               fill="transparent"
                               fillOpacity={0}
                               strokeWidth={2}
-                              connectNulls={false}
+                              connectNulls
                               name="Trajectory"
                             />
                           </AreaChart>
@@ -1639,6 +1648,7 @@ function buildPredictionTimeline(params: {
       evenPaceGap: null,
       projectedRate: null,
       points: [],
+      targetPoints: [],
     };
   }
 
@@ -1665,11 +1675,10 @@ function buildPredictionTimeline(params: {
         checkedAt,
         usedActual: usedActual ?? existing.usedActual,
         usedProjected: usedProjected ?? existing.usedProjected,
-        usedEvenPace: existing.usedEvenPace,
       });
       return;
     }
-    map.set(checkedAt, { checkedAt, usedActual, usedProjected, usedEvenPace: null });
+    map.set(checkedAt, { checkedAt, usedActual, usedProjected });
   };
 
   // Assume the weekly period started near 0% when early telemetry is sparse.
@@ -1736,13 +1745,34 @@ function buildPredictionTimeline(params: {
     evenPaceUsedNow,
     evenPaceGap,
     projectedRate,
-    points: [...map.values()]
-      .sort((a, b) => a.checkedAt - b.checkedAt)
-      .map((point) => ({
-        ...point,
-        usedEvenPace: calculateEvenPaceUsed(point.checkedAt, periodStart, weeklyResetAt, usageSchedule),
-      })),
+    points: [...map.values()].sort((a, b) => a.checkedAt - b.checkedAt),
+    targetPoints: buildTargetTimelinePoints(periodStart, weeklyResetAt, usageSchedule),
   };
+}
+
+const TARGET_SAMPLE_INTERVAL_MS = 15 * 60 * 1000;
+
+function buildTargetTimelinePoints(
+  periodStart: number,
+  resetAt: number,
+  usageSchedule: AppSettings["usageSchedule"],
+): TargetTimelinePoint[] {
+  if (resetAt <= periodStart) {
+    return [];
+  }
+
+  const points: TargetTimelinePoint[] = [];
+  for (let checkedAt = periodStart; checkedAt < resetAt; checkedAt += TARGET_SAMPLE_INTERVAL_MS) {
+    points.push({
+      checkedAt,
+      usedEvenPace: calculateEvenPaceUsed(checkedAt, periodStart, resetAt, usageSchedule),
+    });
+  }
+  points.push({
+    checkedAt: resetAt,
+    usedEvenPace: calculateEvenPaceUsed(resetAt, periodStart, resetAt, usageSchedule),
+  });
+  return points;
 }
 
 function resolveBurnRate(latest: UsageSnapshot | null, preferred: number | null): number | null {
