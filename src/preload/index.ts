@@ -8,6 +8,7 @@ import type {
   LeaderboardSyncStatus,
   ModelUsageHeatmapData,
   ModelUsageHeatmapProgress,
+  ModelUsagePerformance,
   ModelUsageRange,
   ModelUsageSummary,
   UsageEfficiencySummary,
@@ -35,6 +36,9 @@ const api = {
   },
   getUsageEfficiency(): Promise<UsageEfficiencySummary> {
     return ipcRenderer.invoke("codexPulse:getUsageEfficiency");
+  },
+  getModelUsagePerformance(range: ModelUsageRange, periodStart?: number | null): Promise<ModelUsagePerformance> {
+    return ipcRenderer.invoke("codexPulse:getModelUsagePerformance", range, periodStart ?? null);
   },
   getCodexResetCredits(forceRefresh = false): Promise<CodexResetCreditsResult> {
     return ipcRenderer.invoke("codexPulse:getCodexResetCredits", forceRefresh);

@@ -8,6 +8,7 @@ import type {
   ModelUsageHeatmapData,
   ModelUsageHeatmapProgress,
   ModelUsageHeatmapCell,
+  ModelUsagePerformance,
   ModelUsageRange,
   ModelUsageSummary,
   ProviderConfigurationUpdate,
@@ -30,6 +31,7 @@ export type {
   ModelUsageHeatmapData,
   ModelUsageHeatmapProgress,
   ModelUsageHeatmapCell,
+  ModelUsagePerformance,
   ModelUsageRange,
   ModelUsageSummary,
   ProviderConfigurationUpdate,
@@ -51,6 +53,7 @@ declare global {
       getModelUsageHeatmap(): Promise<ModelUsageHeatmapData>;
       cancelModelUsage(): Promise<void>;
       getUsageEfficiency(): Promise<UsageEfficiencySummary>;
+      getModelUsagePerformance(range: ModelUsageRange, periodStart?: number | null): Promise<ModelUsagePerformance>;
       getCodexResetCredits(forceRefresh?: boolean): Promise<CodexResetCreditsResult>;
       getProviderUsage(providerId: string): Promise<ProviderUsageResult>;
       getProviderConfig(providerId: string): Promise<ProviderConfigurationView>;

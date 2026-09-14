@@ -15,6 +15,7 @@ import type {
   HistoryRange,
   LeaderboardSyncStatus,
   ModelUsageRange,
+  ModelUsagePerformance,
   UsageEfficiencySummary,
   ProviderConfigurationUpdate,
   ProviderConfigurationView,
@@ -27,6 +28,7 @@ import { DEFAULT_SETTINGS, SettingsStore } from "./settings";
 import { fetchProviderUsageNative } from "./services/provider-usage";
 import { ProviderSecretsStore } from "./services/provider-secrets";
 import { getAllTimeModelUsageHeatmap, getModelUsageSummary } from "./services/model-usage";
+import { getModelUsagePerformance } from "./services/model-usage-performance";
 import { updateModelUsageRollups } from "./services/model-usage-index";
 import {
   calculateModelUsageEfficiency,
@@ -261,6 +263,13 @@ function registerIpc() {
     const summary = summarizeUsageEfficiency(db.getUsageEfficiencyWeeks());
     return { ...summary, ...calculateModelUsageEfficiency(summary.weeks, rollups) };
   });
+  ipcMain.handle(
+    "codexPulse:getModelUsagePerformance",
+    async (_event, range: ModelUsageRange, periodStart?: number | null): Promise<ModelUsagePerformance> => {
+      const controller = getModelUsageAbortController();
+      return getModelUsagePerformance(range, periodStart ?? undefined, controller.signal);
+    },
+  );
   ipcMain.handle(
     "codexPulse:getCodexResetCredits",
     async (_event, forceRefresh?: boolean): Promise<CodexResetCreditsResult> =>
