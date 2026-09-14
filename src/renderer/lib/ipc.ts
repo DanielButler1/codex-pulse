@@ -7,6 +7,7 @@ import type {
   LeaderboardSyncStatus,
   ModelUsageHeatmapData,
   ModelUsageHeatmapProgress,
+  ModelUsagePerformance,
   ModelUsageRange,
   ModelUsageSummary,
   ProviderConfigurationUpdate,
@@ -25,6 +26,8 @@ export const codexPulseApi = {
     window.codexPulse.getModelUsageHeatmap(),
   cancelModelUsage: (): Promise<void> => window.codexPulse.cancelModelUsage(),
   getUsageEfficiency: () => window.codexPulse.getUsageEfficiency(),
+  getModelUsagePerformance: (range: ModelUsageRange, periodStart?: number | null): Promise<ModelUsagePerformance> =>
+    window.codexPulse.getModelUsagePerformance(range, periodStart),
   getCodexResetCredits: (forceRefresh = false): Promise<CodexResetCreditsResult> =>
     window.codexPulse.getCodexResetCredits(forceRefresh),
   getProviderUsage: (providerId: string): Promise<ProviderUsageResult> =>

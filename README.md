@@ -21,6 +21,7 @@ It is built for the beta release line and currently ships with Codex as the acti
 - Stores usage snapshots in local SQLite only.
 - Shows predicted limit hit timing based on recent activity.
 - Visualizes model usage trends, projections, and an all-time heatmap.
+- Shows rough daily output-token throughput per model from local rollout timings.
 - Runs tray-first and starts hidden on installed builds.
 - Supports a provider catalog so additional agents can be added without reworking the UI.
 

@@ -1,4 +1,5 @@
-import type { UsageEfficiencySummary } from "../lib/types";
+import type { ModelUsagePerformance, UsageEfficiencySummary } from "../lib/types";
+import { UsageInformation } from "./UsageInformation";
 import {
   Bar,
   BarChart,
@@ -13,11 +14,13 @@ import {
 type Props = {
   summary: UsageEfficiencySummary | null;
   loading: boolean;
+  performance: ModelUsagePerformance | null;
+  performanceLoading: boolean;
 };
 
-export function UsageEfficiencyPanel({ summary, loading }: Props) {
-  if (loading && !summary) {
-    return <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-8 text-neutral-400">Calculating usage efficiency…</div>;
+export function UsageEfficiencyPanel({ summary, loading, performance, performanceLoading }: Props) {
+  if (loading && !summary && performanceLoading && !performance) {
+    return <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-8 text-neutral-400">Calculating usage information…</div>;
   }
 
   const usableWeeks = summary?.weeks.filter((week) => week.tokensPerPercent != null) ?? [];
@@ -25,7 +28,26 @@ export function UsageEfficiencyPanel({ summary, loading }: Props) {
   return (
     <div className="space-y-5">
       <section>
-        <h2 className="text-2xl font-semibold">Usage efficiency</h2>
+        <h2 className="text-2xl font-semibold">Usage information</h2>
+        <p className="mt-1 text-sm text-neutral-400">
+          Local rollout throughput alongside empirical weekly allowance estimates.
+        </p>
+      </section>
+
+      {performanceLoading && !performance ? (
+        <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5 text-sm text-neutral-400">
+          Reading recent rollout timing records…
+        </div>
+      ) : performance ? (
+        <UsageInformation performance={performance} />
+      ) : (
+        <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5 text-sm text-neutral-400">
+          Throughput data is not available yet. Refresh after Codex has recorded a few responses.
+        </div>
+      )}
+
+      <section>
+        <h3 className="text-xl font-semibold">Weekly allowance efficiency</h3>
         <p className="mt-1 text-sm text-neutral-400">
           Observed rollout tokens per weekly usage percentage point over retained history.
         </p>

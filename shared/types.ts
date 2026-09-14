@@ -225,6 +225,34 @@ export type ModelUsageSummary = {
   };
 };
 
+export type ModelUsagePerformanceDay = {
+  dayStart: number;
+  model: string;
+  responseCount: number;
+  outputTokens: number;
+  durationMs: number;
+  throughputTokensPerSecond: number | null;
+  medianResponseDurationMs: number | null;
+  p95ResponseDurationMs: number | null;
+  estimatedResponseCount: number;
+};
+
+export type ModelUsagePerformanceTotals = {
+  responseCount: number;
+  outputTokens: number;
+  durationMs: number;
+  throughputTokensPerSecond: number | null;
+  medianResponseDurationMs: number | null;
+  p95ResponseDurationMs: number | null;
+  estimatedResponseCount: number;
+};
+
+export type ModelUsagePerformance = {
+  timezone: string;
+  daily: ModelUsagePerformanceDay[];
+  totals: ModelUsagePerformanceTotals;
+};
+
 export type ModelUsageHeatmapCell = {
   dayIndex: number;
   hour: number;

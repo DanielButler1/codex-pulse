@@ -41,6 +41,7 @@ import type {
   LeaderboardSyncStatus,
   ModelUsageHeatmapData,
   ModelUsageHeatmapProgress,
+  ModelUsagePerformance,
   ModelUsageRange,
   ModelUsageSummary,
   UsageSnapshot,
@@ -80,6 +81,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   ),
 };
 const MODEL_USAGE_BACKGROUND_REFRESH_MS = 5 * 60 * 1000;
+const PERFORMANCE_BACKGROUND_REFRESH_MS = 5 * 60 * 1000;
 
 type WeeklyWindowOption = {
   offset: number;
@@ -146,6 +148,8 @@ export default function App() {
   const [history, setHistory] = useState<UsageSnapshot[]>([]);
   const [modelUsage, setModelUsage] = useState<ModelUsageSummary | null>(null);
   const [modelHeatmap, setModelHeatmap] = useState<ModelUsageHeatmapData | null>(null);
+  const [usagePerformance, setUsagePerformance] = useState<ModelUsagePerformance | null>(null);
+  const [usagePerformanceLoading, setUsagePerformanceLoading] = useState(false);
   const [usageEfficiency, setUsageEfficiency] = useState<UsageEfficiencySummary | null>(null);
   const [usageEfficiencyLoading, setUsageEfficiencyLoading] = useState(false);
   const [resetCredits, setResetCredits] = useState<CodexResetCreditsResult | null>(null);
@@ -167,6 +171,7 @@ export default function App() {
   const [modelUsageLoading, setModelUsageLoading] = useState(false);
   const [updateState, setUpdateState] = useState<AppUpdateState | null>(null);
   const lastModelUsageLoadAtRef = useRef(0);
+  const lastPerformanceLoadAtRef = useRef(0);
   const modelUsageRequestIdRef = useRef(0);
   const modelUsageReferenceRef = useRef<UsageSnapshot | null>(null);
   const resetCreditsRef = useRef<CodexResetCreditsResult | null>(null);
@@ -308,6 +313,21 @@ export default function App() {
     }
   }, []);
 
+  const loadUsagePerformance = useCallback(async () => {
+    setUsagePerformanceLoading(true);
+    try {
+      setUsagePerformance(await codexPulseApi.getModelUsagePerformance("30d"));
+      lastPerformanceLoadAtRef.current = Date.now();
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        console.error("Failed to load usage performance", error);
+      }
+      setUsagePerformance(null);
+    } finally {
+      setUsagePerformanceLoading(false);
+    }
+  }, []);
+
   const handleUpdateAction = useCallback(async () => {
     if (updateState?.status === "downloaded") {
       await codexPulseApi.installUpdate();
@@ -387,11 +407,12 @@ export default function App() {
   useEffect(() => {
     if (activeTab === "efficiency" && !showSettings) {
       void loadUsageEfficiency();
+      void loadUsagePerformance();
     }
     if (activeTab === "overview" || showSettings) {
       void codexPulseApi.cancelModelUsage();
     }
-  }, [activeTab, loadUsageEfficiency, showSettings]);
+  }, [activeTab, loadUsageEfficiency, loadUsagePerformance, showSettings]);
 
   useEffect(() => {
     const unsubscribe = codexPulseApi.subscribeToModelUsageHeatmapProgress((progress) => {
@@ -420,7 +441,12 @@ export default function App() {
       ) {
         void loadModelUsage(modelRange);
       }
-      if (activeTab === "efficiency") void loadUsageEfficiency();
+      if (activeTab === "efficiency") {
+        void loadUsageEfficiency();
+        if (Date.now() - lastPerformanceLoadAtRef.current >= PERFORMANCE_BACKGROUND_REFRESH_MS) {
+          void loadUsagePerformance();
+        }
+      }
     });
     return () => {
       clearInterval(interval);
@@ -430,6 +456,7 @@ export default function App() {
     load,
     activeTab,
     loadModelUsage,
+    loadUsagePerformance,
     loadUsageEfficiency,
     loadResetCredits,
     loadSettings,
@@ -485,7 +512,7 @@ export default function App() {
             : loadModelUsage(modelRange),
         );
       }
-      if (activeTab === "efficiency") refreshes.push(loadUsageEfficiency());
+      if (activeTab === "efficiency") refreshes.push(loadUsageEfficiency(), loadUsagePerformance());
       await Promise.all(refreshes);
     } catch (error) {
       console.error("Failed to refresh usage", error);
@@ -493,7 +520,7 @@ export default function App() {
         console.error("Failed to reload usage after refresh error", loadError);
       });
     }
-  }, [activeTab, load, loadModelHeatmap, loadModelUsage, loadResetCredits, loadUsageEfficiency, modelRange]);
+  }, [activeTab, load, loadModelHeatmap, loadModelUsage, loadResetCredits, loadUsageEfficiency, loadUsagePerformance, modelRange]);
 
   const onModelRangeChange = useCallback(
     (range: ModelUsageRange) => {
@@ -709,7 +736,7 @@ export default function App() {
             className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${activeTab === "efficiency" && !showSettings ? "bg-neutral-800 text-white" : "text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200"}`}
           >
             <TrendingUp className="h-4 w-4" />
-            <span>Usage efficiency</span>
+            <span>Usage information</span>
           </button>
         </div>
         <div className="border-t border-neutral-800 px-2 py-3">
@@ -1091,7 +1118,12 @@ export default function App() {
                   />
                 </>
               ) : (
-                <UsageEfficiencyPanel summary={usageEfficiency} loading={usageEfficiencyLoading} />
+                <UsageEfficiencyPanel
+                  summary={usageEfficiency}
+                  loading={usageEfficiencyLoading}
+                  performance={usagePerformance}
+                  performanceLoading={usagePerformanceLoading}
+                />
               )}
             </>
           )}
