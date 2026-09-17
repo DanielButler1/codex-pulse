@@ -964,24 +964,7 @@ export default function App() {
                               tickFormatter={(value: number) => `${value}%`}
                             />
                             <Tooltip
-                              contentStyle={{
-                                backgroundColor: "#181818",
-                                border: "1px solid #525252",
-                                borderRadius: "0.5rem",
-                                color: "#f5f5f5",
-                              }}
-                              formatter={(value: unknown) =>
-                                typeof value === "number" ? `${value.toFixed(1)}% remaining` : String(value ?? "")
-                              }
-                              labelFormatter={(value: unknown) =>
-                                new Date(typeof value === "number" ? value : Number(value)).toLocaleString([], {
-                                  weekday: "short",
-                                  day: "numeric",
-                                  month: "short",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })
-                              }
+                              content={<PaceChartTooltip data={paceChartPoints} />}
                             />
                             <Legend
                               verticalAlign="top"
@@ -1805,6 +1788,95 @@ function buildTargetTimelinePoints(
     usedEvenPace: calculateEvenPaceUsed(resetAt, periodStart, resetAt, usageSchedule),
   });
   return points;
+}
+
+function PaceChartTooltip({
+  active,
+  label,
+  data,
+}: {
+  active?: boolean;
+  label?: unknown;
+  data: PaceChartPoint[];
+}) {
+  if (!active || label == null) {
+    return null;
+  }
+
+  const checkedAt = typeof label === "number" ? label : Number(label);
+  if (!Number.isFinite(checkedAt)) {
+    return null;
+  }
+
+  const series = [
+    { key: "targetRemaining", label: "Target", color: "#63c174" },
+    { key: "actualRemaining", label: "Actual", color: "#4f8cff" },
+    { key: "currentRemaining", label: "Trajectory", color: "#fb5a5a" },
+  ] as const;
+  const values = series
+    .map((item) => ({
+      ...item,
+      value: interpolatePaceSeries(data, item.key, checkedAt),
+    }))
+    .filter((item): item is (typeof series)[number] & { value: number } => item.value != null);
+
+  if (values.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs text-neutral-100 shadow-xl">
+      <p className="mb-2 text-neutral-400">
+        {new Date(checkedAt).toLocaleString([], {
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        })}
+      </p>
+      <div className="space-y-1.5">
+        {values.map((item) => (
+          <div key={item.key} className="flex items-center gap-2">
+            <span
+              className="h-2 w-2 shrink-0 rounded-full"
+              style={{ backgroundColor: item.color }}
+              aria-hidden="true"
+            />
+            <span className="min-w-20 text-neutral-300">{item.label}</span>
+            <span className="font-medium tabular-nums">{item.value.toFixed(1)}% remaining</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function interpolatePaceSeries(
+  data: PaceChartPoint[],
+  key: "targetRemaining" | "actualRemaining" | "currentRemaining",
+  checkedAt: number,
+): number | null {
+  const points = data
+    .filter((point) => typeof point[key] === "number" && Number.isFinite(point[key]))
+    .map((point) => ({ checkedAt: point.checkedAt, value: point[key] as number }));
+  if (points.length === 0 || checkedAt < points[0].checkedAt || checkedAt > points[points.length - 1].checkedAt) {
+    return null;
+  }
+
+  const upperIndex = points.findIndex((point) => point.checkedAt >= checkedAt);
+  if (upperIndex <= 0) {
+    return points[0].value;
+  }
+
+  const upper = points[upperIndex];
+  const lower = points[upperIndex - 1];
+  if (upper.checkedAt === lower.checkedAt) {
+    return upper.value;
+  }
+
+  const ratio = (checkedAt - lower.checkedAt) / (upper.checkedAt - lower.checkedAt);
+  return lower.value + (upper.value - lower.value) * ratio;
 }
 
 function resolveBurnRate(latest: UsageSnapshot | null, preferred: number | null): number | null {
