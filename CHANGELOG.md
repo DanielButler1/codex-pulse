@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.38-beta
+
+- Show Target, Actual, and Trajectory values together in the pace chart tooltip at the hovered timestamp.
+- Interpolate values between independent chart samples so the tooltip remains complete across flat target periods.
+
 ## 0.0.37-beta
 
 - Added Usage information with rough daily output-token throughput, response timing percentiles, and per-model comparisons from local rollout logs.
