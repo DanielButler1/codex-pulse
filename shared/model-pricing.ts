@@ -16,12 +16,20 @@ const FALLBACK_MODEL_PRICING: ModelPricing = {
   outputUsdPer1M: 12,
 };
 
-// OpenAI API standard-processing prices in USD per million tokens, updated 2026-09-04.
-// https://developers.openai.com/api/docs/models/compare
+// OpenAI API standard-processing prices in USD per million tokens, updated 2026-09-25.
+// https://developers.openai.com/api/docs/pricing
 const MODEL_PRICING: Array<{ prefix: string; pricing: ModelPricing }> = [
   {
     prefix: "gpt-6-astra",
     pricing: { inputUsdPer1M: 10, cachedInputUsdPer1M: 1, outputUsdPer1M: 50 },
+  },
+  {
+    prefix: "gpt-6-sol",
+    pricing: { inputUsdPer1M: 2, cachedInputUsdPer1M: 0.2, outputUsdPer1M: 10 },
+  },
+  {
+    prefix: "gpt-6-luna",
+    pricing: { inputUsdPer1M: 0.1, cachedInputUsdPer1M: 0.01, outputUsdPer1M: 0.5 },
   },
   {
     prefix: "gpt-5.6-luna",
