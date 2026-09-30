@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.40-beta
+
+- Added GPT-6.1 Sol API cost estimates with its current standard input, cached-input, and output rates.
+
 ## 0.0.39-beta
 
 - Added GPT-6 Sol and Luna API cost estimates using OpenAI's current standard rates.
