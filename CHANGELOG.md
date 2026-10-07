@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.41-beta
+
+- Simplified Usage information with a compact summary and a clearer chart.
+- Added model toggles and expandable daily observations and timing notes.
+- Display long generation durations in hours.
+- Use stable chart keys so model names containing dots render correctly.
+
 ## 0.0.40-beta
 
 - Added GPT-6.1 Sol API cost estimates with its current standard input, cached-input, and output rates.
