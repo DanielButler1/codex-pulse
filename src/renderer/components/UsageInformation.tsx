@@ -1,7 +1,7 @@
+import { useState } from "react";
 import type { ModelUsagePerformance } from "../lib/types";
 import {
   CartesianGrid,
-  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -17,6 +17,7 @@ type Props = {
 const MODEL_COLORS = ["#4f8cff", "#22c55e", "#f59e0b", "#e879f9", "#14b8a6"];
 
 export function UsageInformation({ performance }: Props) {
+  const [hiddenModels, setHiddenModels] = useState<string[]>([]);
   const modelTotals = new Map<string, number>();
   for (const row of performance.daily) {
     modelTotals.set(row.model, (modelTotals.get(row.model) ?? 0) + row.outputTokens);
@@ -31,37 +32,56 @@ export function UsageInformation({ performance }: Props) {
       dayStart,
       label: formatDate(dayStart),
     };
-    for (const model of chartModels) {
-      row[model] = performance.daily.find((item) => item.dayStart === dayStart && item.model === model)?.throughputTokensPerSecond ?? null;
+    for (const [index, model] of chartModels.entries()) {
+      row[`model_${index}`] = performance.daily.find((item) => item.dayStart === dayStart && item.model === model)?.throughputTokensPerSecond ?? null;
     }
     return row;
   });
   const recentRows = [...performance.daily].sort((a, b) => b.dayStart - a.dayStart || b.outputTokens - a.outputTokens);
 
   return (
-    <section className="space-y-5">
+    <section className="space-y-6">
       <section>
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-2xl font-semibold">Throughput over time</h2>
-          <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-200">
-            Rough estimate
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-medium">Output speed</h2>
+          <span className="rounded-full border border-neutral-700 px-2.5 py-1 text-xs text-neutral-400">
+            Estimated from local activity
           </span>
         </div>
         <p className="mt-1 text-sm text-neutral-400">
-          Output tokens divided by model-active generation time, grouped by local day and model. The current view covers the last 30 days ({performance.timezone}).
+          Daily tokens per second · Last 30 days · {performance.timezone}
         </p>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-4">
-        <MetricCard label="Observed rate" value={formatRate(performance.totals.throughputTokensPerSecond)} detail="Output tokens per second" />
+      <section className="grid gap-5 border-y border-neutral-800 py-5 sm:grid-cols-3">
+        <MetricCard label="Average speed" value={formatRate(performance.totals.throughputTokensPerSecond)} detail="Output tokens per second" />
         <MetricCard label="Responses" value={performance.totals.responseCount.toLocaleString()} detail={`${formatTokens(performance.totals.outputTokens)} output tokens`} />
-        <MetricCard label="Generation time" value={formatDuration(performance.totals.durationMs)} detail={`p95 response ${formatDuration(performance.totals.p95ResponseDurationMs)}`} />
-        <MetricCard label="Estimated samples" value={performance.totals.estimatedResponseCount.toLocaleString()} detail="Interval-based timings" />
+        <MetricCard label="Generation time" value={formatDuration(performance.totals.durationMs)} detail="Model-active time" />
       </section>
 
-      <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-        <h3 className="text-lg font-semibold">Daily output rate by model</h3>
-        <p className="mt-1 text-sm text-neutral-400">The five models with the most output tokens in this period are shown.</p>
+      <section>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-sm font-medium text-neutral-200">Speed by model</h3>
+          <div className="flex flex-wrap gap-1" aria-label="Chart models">
+            {chartModels.map((model, index) => {
+              const visible = !hiddenModels.includes(model);
+              return (
+                <button
+                  key={model}
+                  type="button"
+                  aria-pressed={visible}
+                  onClick={() => setHiddenModels((models) => visible
+                    ? [...models, model]
+                    : models.filter((item) => item !== model))}
+                  className={`inline-flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-400 ${visible ? "text-neutral-300" : "text-neutral-500"}`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: visible ? MODEL_COLORS[index] : "#525252" }} />
+                  {formatModel(model)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         {chartData.length === 0 || chartModels.length === 0 ? (
           <p className="mt-5 text-sm text-neutral-400">No token usage records with timing data are available yet.</p>
         ) : (
@@ -69,7 +89,7 @@ export function UsageInformation({ performance }: Props) {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData} margin={{ top: 12, right: 16, left: 8, bottom: 4 }}>
                 <CartesianGrid stroke="#2b2b2b" strokeDasharray="3 5" vertical={false} />
-                <XAxis dataKey="dayStart" tickFormatter={formatDate} stroke="#737373" tickLine={false} axisLine={false} tick={{ fill: "#a3a3a3", fontSize: 12 }} />
+                <XAxis minTickGap={48} dataKey="dayStart" tickFormatter={formatDate} stroke="#737373" tickLine={false} axisLine={false} tick={{ fill: "#a3a3a3", fontSize: 12 }} />
                 <YAxis tickFormatter={(value: number) => formatRate(value)} stroke="#737373" tickLine={false} axisLine={false} tick={{ fill: "#a3a3a3", fontSize: 12 }} width={64} />
                 <Tooltip
                   cursor={{ stroke: "#525252" }}
@@ -77,9 +97,8 @@ export function UsageInformation({ performance }: Props) {
                   labelFormatter={(value: unknown) => formatDate(Number(value))}
                   formatter={(value: unknown) => [formatRate(Number(value)), "Output rate"]}
                 />
-                <Legend formatter={(value) => formatModel(value)} />
                 {chartModels.map((model, index) => (
-                  <Line key={model} type="monotone" dataKey={model} name={model} connectNulls stroke={MODEL_COLORS[index]} strokeWidth={2} dot={false} />
+                  <Line key={model} type="monotone" dataKey={`model_${index}`} name={model} connectNulls hide={hiddenModels.includes(model)} stroke={MODEL_COLORS[index]} strokeWidth={2} dot={false} />
                 ))}
               </LineChart>
             </ResponsiveContainer>
@@ -87,15 +106,14 @@ export function UsageInformation({ performance }: Props) {
         )}
       </section>
 
-      <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-        <h3 className="text-lg font-semibold">Daily model observations</h3>
-        <p className="mt-1 text-sm text-neutral-400">Use this table to compare rates consistently across models and days.</p>
+      <details className="border-t border-neutral-800 pt-4">
+        <summary className="cursor-pointer text-sm font-medium text-neutral-300 hover:text-neutral-100">Daily observations</summary>
         {recentRows.length === 0 ? (
           <p className="mt-5 text-sm text-neutral-400">No daily observations are available yet.</p>
         ) : (
           <div className="mt-5 overflow-x-auto">
-            <table className="w-full min-w-[820px] text-left text-sm">
-              <thead className="border-b border-neutral-800 text-xs uppercase tracking-[0.12em] text-neutral-500">
+            <table className="w-full min-w-[820px] text-left text-xs tabular-nums">
+              <thead className="border-b border-neutral-800 text-xs text-neutral-500">
                 <tr>
                   <th className="pb-3 font-medium">Day</th>
                   <th className="pb-3 font-medium">Model</th>
@@ -122,21 +140,28 @@ export function UsageInformation({ performance }: Props) {
             </table>
           </div>
         )}
-      </section>
+      </details>
 
-      <p className="text-xs leading-5 text-neutral-500">
+      <details className="text-xs text-neutral-500">
+        <summary className="cursor-pointer hover:text-neutral-300">About these estimates</summary>
+        <p className="mt-2 max-w-2xl leading-5">
+          {performance.totals.estimatedResponseCount.toLocaleString()} responses use estimated timing intervals. The p95 response duration is {formatDuration(performance.totals.p95ResponseDurationMs)}.
+          The chart shows the five models with the most output tokens. Select a model to show or hide it.
+        </p>
+        <p className="mt-2 max-w-2xl leading-5">
         This is client-side telemetry, not server-side OpenAI timing. Exact spans come from reasoning and agent-message events; when a response has no matching span, the interval since the previous response for that model is used and counted as estimated.
-      </p>
+        </p>
+      </details>
     </section>
   );
 }
 
 function MetricCard({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
-    <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
-      <p className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-500">{label}</p>
-      <p className="mt-3 text-3xl font-semibold text-neutral-50">{value}</p>
-      <p className="mt-2 text-xs text-neutral-400">{detail}</p>
+    <div className="min-w-0">
+      <p className="text-xs text-neutral-400">{label}</p>
+      <p className="mt-1 text-2xl font-medium tabular-nums tracking-tight text-neutral-50">{value}</p>
+      <p className="mt-1 text-xs text-neutral-500">{detail}</p>
     </div>
   );
 }
@@ -154,7 +179,8 @@ function formatDuration(value: number | null): string {
   if (value == null || !Number.isFinite(value)) return "Not enough data";
   if (value < 1000) return `${Math.round(value)} ms`;
   if (value < 60_000) return `${(value / 1000).toFixed(1)} s`;
-  return `${(value / 60_000).toFixed(1)} min`;
+  if (value < 3_600_000) return `${(value / 60_000).toFixed(1)} min`;
+  return `${(value / 3_600_000).toFixed(1)} h`;
 }
 
 function formatDate(value: number): string {
