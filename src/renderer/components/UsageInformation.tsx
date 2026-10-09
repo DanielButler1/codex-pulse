@@ -168,7 +168,7 @@ function MetricCard({ label, value, detail }: { label: string; value: string; de
 
 function formatRate(value: number | null): string {
   if (value == null || !Number.isFinite(value)) return "Not enough data";
-  return `${new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(value)}/s`;
+  return `${new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(value)} tps`;
 }
 
 function formatTokens(value: number): string {

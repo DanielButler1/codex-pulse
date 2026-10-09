@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.42-beta
+
+- Label output rates explicitly as tps (tokens per second) in the chart, tooltip, summary, and observations table.
+
 ## 0.0.41-beta
 
 - Simplified Usage information with a compact summary and a clearer chart.
