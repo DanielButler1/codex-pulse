@@ -21,12 +21,6 @@ const FALLBACK_MODEL_PRICING: ModelPricing = {
 // Prefixes are matched in order, so longer model IDs must come before their shorter prefixes.
 const MODEL_PRICING: Array<{ prefix: string; pricing: ModelPricing }> = [
   {
-    // Codex's automatic approval reviewer is a hidden alias with no published price; third-party
-    // catalogs list it at GPT-5.6 Luna's rates, so use those.
-    prefix: "codex-auto-review",
-    pricing: { inputUsdPer1M: 0.2, cachedInputUsdPer1M: 0.02, outputUsdPer1M: 1.2 },
-  },
-  {
     prefix: "gpt-6-astra",
     pricing: { inputUsdPer1M: 10, cachedInputUsdPer1M: 1, outputUsdPer1M: 50 },
   },
@@ -116,8 +110,26 @@ const MODEL_PRICING: Array<{ prefix: string; pricing: ModelPricing }> = [
   },
 ];
 
-export function resolveModelPricing(model: string): ModelPricing {
+const FREE: ModelPricing = { inputUsdPer1M: 0, cachedInputUsdPer1M: 0, outputUsdPer1M: 0 };
+
+// Codex auto-review (model "codex-auto-review") is a server-routed alias with no API price of its own.
+// It has been free with ChatGPT sign-in since 2026-10-06; before that it's priced as the model running
+// it: GPT-5.4, then GPT-5.6 Luna from 2026-07-30 (OpenAI's documented migration), then the newest Luna,
+// GPT-6 Luna, from its release on 2026-09-22. Newest first.
+const AUTO_REVIEW_MODELS: Array<{ fromMs: number; model: string | null }> = [
+  { fromMs: Date.UTC(2026, 9, 6), model: null },
+  { fromMs: Date.UTC(2026, 8, 22), model: "gpt-6-luna" },
+  { fromMs: Date.UTC(2026, 6, 30), model: "gpt-5.6-luna" },
+  { fromMs: -Infinity, model: "gpt-5.4" },
+];
+
+// atMs: when the tokens were used. Only Codex auto-review's price depends on it.
+export function resolveModelPricing(model: string, atMs: number = Date.now()): ModelPricing {
   const normalized = model.toLowerCase();
+  if (normalized === "codex-auto-review") {
+    const runner = AUTO_REVIEW_MODELS.find(({ fromMs }) => atMs >= fromMs)?.model ?? null;
+    return runner ? resolveModelPricing(runner) : FREE;
+  }
   // Match whole name segments, so "gpt-5" covers "gpt-5-codex" but not a newer "gpt-5.7".
   return (
     MODEL_PRICING.find(
@@ -126,8 +138,12 @@ export function resolveModelPricing(model: string): ModelPricing {
   );
 }
 
-export function estimateModelCostUsd(model: string, usage: TokenUsage): number {
-  const pricing = resolveModelPricing(model);
+export function estimateModelCostUsd(
+  model: string,
+  usage: TokenUsage,
+  atMs: number = Date.now(),
+): number {
+  const pricing = resolveModelPricing(model, atMs);
   // Cached input tokens are a discounted subset of input tokens, not an extra bucket.
   const cachedInputTokens = Math.min(usage.cachedInputTokens, usage.inputTokens);
   const uncachedInputTokens = Math.max(0, usage.inputTokens - cachedInputTokens);
