@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.44-beta
+
+- Codex auto-review costs nothing from 6 October 2026, when it became free with ChatGPT sign-in. Earlier auto-review tokens are priced as the model running it: GPT-5.4, GPT-5.6 Luna from 30 July 2026, and GPT-6 Luna from 22 September 2026. Existing rollups are rebuilt.
+- Price usage at the rates in force when the tokens were used.
+
 ## 0.0.43-beta
 
 - Price indexed rollout tokens with the same current OpenAI API rates as the rest of the app. The rollout index had its own older table, so GPT-6 models fell back to a generic rate and GPT-5.6 Sol, Terra, and Luna used outdated rates; existing rollups are rebuilt at the new rates.

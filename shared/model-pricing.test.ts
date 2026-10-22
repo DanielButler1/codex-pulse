@@ -67,8 +67,20 @@ test("prices older Codex models at their API rates", () => {
   });
 });
 
-test("prices Codex's auto-review alias at GPT-5.6 Luna rates", () => {
-  assert.deepEqual(resolveModelPricing("codex-auto-review"), resolveModelPricing("gpt-5.6-luna"));
+test("prices Codex auto-review as the model running it until it became free", () => {
+  const at = (date: string) => Date.parse(`${date}T12:00:00Z`);
+
+  assert.deepEqual(resolveModelPricing("codex-auto-review", at("2026-06-01")), resolveModelPricing("gpt-5.4"));
+  assert.deepEqual(resolveModelPricing("codex-auto-review", at("2026-08-15")), resolveModelPricing("gpt-5.6-luna"));
+  assert.deepEqual(resolveModelPricing("codex-auto-review", at("2026-09-30")), resolveModelPricing("gpt-6-luna"));
+  assert.equal(
+    estimateModelCostUsd(
+      "codex-auto-review",
+      { inputTokens: 1_000_000, cachedInputTokens: 0, outputTokens: 1_000_000 },
+      at("2026-10-06"),
+    ),
+    0,
+  );
 });
 
 test("prices GPT-6.1 Sol rollout tokens with its own rates", () => {

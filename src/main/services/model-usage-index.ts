@@ -8,7 +8,7 @@ import { estimateModelCostUsd } from "../../../shared/model-pricing.ts";
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
 // Increment whenever parsing, bucketing, or pricing semantics change. Existing
 // rows are rebuilt automatically so cached totals never mix algorithms.
-export const MODEL_USAGE_INDEX_VERSION = "4";
+export const MODEL_USAGE_INDEX_VERSION = "5";
 
 type TokenTotals = {
   inputTokens: number;
@@ -125,7 +125,7 @@ async function parseRolloutFile(filePath: string, signal?: AbortSignal): Promise
       bucket.outputTokens += delta.outputTokens;
       bucket.reasoningOutputTokens += delta.reasoningOutputTokens;
       bucket.totalTokens += delta.totalTokens;
-      bucket.estimatedCostUsd += estimateModelCostUsd(model, delta);
+      bucket.estimatedCostUsd += estimateModelCostUsd(model, delta, timestampMs);
     }
   } finally {
     lines.close();

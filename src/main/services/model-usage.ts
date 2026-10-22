@@ -296,12 +296,13 @@ export async function collectFileUsage(
     row.outputTokens += delta.outputTokens;
     row.reasoningOutputTokens += delta.reasoningOutputTokens;
     row.totalTokens += delta.totalTokens;
-    row.estimatedCostUsd = estimateCostUsd(row.model, row);
+    // Priced as each delta arrives: a model's rate can depend on when the tokens were used.
+    row.estimatedCostUsd += estimateCostUsd(model, delta, timestampMs);
 
     const timelineBucketStart = getTimelineBucketStart(timestampMs, timelineGranularity);
     const timelineBucket = ensureTimelineBucket(timelineBuckets, timelineBucketStart);
     timelineBucket.totalTokens += delta.totalTokens;
-    timelineBucket.estimatedCostUsd += estimateCostUsd(model, delta);
+    timelineBucket.estimatedCostUsd += estimateCostUsd(model, delta, timestampMs);
   }
 }
 
@@ -701,7 +702,7 @@ async function collectMonthTotalsFromFile(
       (eventTurnId ? turnIdToModel.get(eventTurnId) : null) ?? currentModel,
     );
     totalTokens += delta.totalTokens;
-    estimatedCostUsd += estimateCostUsd(model, delta);
+    estimatedCostUsd += estimateCostUsd(model, delta, timestampMs);
   }
 
   return { totalTokens, estimatedCostUsd };
@@ -771,8 +772,8 @@ function normalizeModelName(value: unknown): string {
   return "unknown";
 }
 
-export function estimateCostUsd(model: string, usage: TokenTotals): number {
-  return estimateModelCostUsd(model, usage);
+export function estimateCostUsd(model: string, usage: TokenTotals, atMs?: number): number {
+  return estimateModelCostUsd(model, usage, atMs);
 }
 
 function percentageOf(value: number, total: number): number {
