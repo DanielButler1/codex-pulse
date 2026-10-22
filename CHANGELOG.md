@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.43-beta
+
+- Price indexed rollout tokens with the same current OpenAI API rates as the rest of the app. The rollout index had its own older table, so GPT-6 models fell back to a generic rate and GPT-5.6 Sol, Terra, and Luna used outdated rates; existing rollups are rebuilt at the new rates.
+- Added API cost estimates for GPT-5.1, GPT-5.1 Codex Max and Mini, GPT-5 Codex, GPT-5 Mini and Nano, GPT-5.4 Nano, and Codex auto-review.
+- Match model IDs on whole name segments, so a newer release such as GPT-5.7 uses the generic rate instead of an older model's.
+
 ## 0.0.42-beta
 
 - Label output rates explicitly as tps (tokens per second) in the chart, tooltip, summary, and observations table.
